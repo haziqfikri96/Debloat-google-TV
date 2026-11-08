@@ -495,6 +495,7 @@ glass() {
   sh_ pm grant "$GLASS_PKG" android.permission.ACCESS_COARSE_LOCATION >/dev/null 2>&1 || true
   enable_home_keeper
   screensaver on
+  reapply_config
   apply_pending
   # Lets the launcher read a wallpaper pushed with `./gtv.sh wallpaper`.
   sh_ pm grant "$GLASS_PKG" android.permission.READ_MEDIA_IMAGES >/dev/null 2>&1 \
@@ -550,6 +551,7 @@ glass_config() {
     return 1
   fi
   local args="" k v out
+  local -a saved_args=("$@")
   while (( $# )); do
     k="$1" v="$2"; shift 2
     case "$k" in
@@ -559,6 +561,32 @@ glass_config() {
   done
   out="$(sh_ "am start -n $GLASS_PKG/.HomeActivity -a io.github.debloatgtv.glass.CONFIG$args" 2>&1 || true)"
   if [[ "$out" == *Error* ]]; then warn "Glass Launcher didn't accept the settings: ${out##*Error: }"; return 2; fi
+  remember_config "${saved_args[@]}"
+  return 0
+}
+
+# Settings sent to Glass, so they survive a reinstall (CI builds are signed with a
+# fresh key each time, so an update means uninstall + install, which wipes app data).
+CONFIG_FILE="$ROOT/.glass-config"
+remember_config() {
+  (( DRY_RUN )) && return 0
+  local k v tmp
+  while (( $# >= 2 )); do
+    k="$1" v="$2"; shift 2
+    tmp="$(grep -v "^$k	" "$CONFIG_FILE" 2>/dev/null || true)"
+    printf '%s\n%s\t%s\n' "$tmp" "$k" "$v" | grep -v '^$' > "$CONFIG_FILE"
+  done
+}
+
+reapply_config() {
+  [[ -s "$CONFIG_FILE" ]] || return 0
+  local -a args=()
+  local k v
+  while IFS=$'\t' read -r k v; do
+    [[ -n "$k" ]] && args+=("$k" "$v")
+  done < "$CONFIG_FILE"
+  (( ${#args[@]} )) || return 0
+  glass_config "${args[@]}" >/dev/null 2>&1 && ok "Restored your Glass settings (prayer location, Google Home, suggestions)"
   return 0
 }
 
