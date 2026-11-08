@@ -825,14 +825,16 @@ status() {
 uninstall_apps() {
   (( $# )) || die "Usage: ./gtv.sh uninstall <package> [package...]   (find names with: ./gtv.sh packages)"
   require_device
-  local p out
+  local p out installed system
+  installed="$(installed_packages)"
+  system="$(q_ pm list packages -s | sed 's/^package://')"
   for p in "$@"; do
     if is_protected "$p" || [[ "$p" == "$GLASS_PKG" ]]; then warn "Not removing $p (needed by the TV or Glass)"; continue; fi
+    if ! grep -qxF "$p" <<<"$installed"; then ok "$p is not installed (already removed)"; continue; fi
+    if grep -qxF "$p" <<<"$system"; then warn "$p is a system app: use a debloat profile or lists/custom.txt instead"; continue; fi
     if (( DRY_RUN )); then printf '    [dry-run] adb uninstall %s\n' "$p"; continue; fi
     out="$(adb_ uninstall "$p" 2>&1 || true)"
     if [[ "$out" == *Success* ]]; then ok "removed $p"
-    elif [[ "$out" == *DELETE_FAILED_INTERNAL_ERROR* || "$out" == *"not installed for"* ]]; then
-      warn "$p is a system app: use a debloat profile or lists/custom.txt instead"
     else warn "$p: ${out:-failed}"; fi
   done
 }
