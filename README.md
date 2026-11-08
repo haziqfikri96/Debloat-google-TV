@@ -138,6 +138,7 @@ Profiles stack: `aggressive` includes `recommended`, and `recommended` includes 
 | `safe` | Tutorials, feedback, Play Games, YouTube Music/Kids/TV, print services, screensavers | Nothing important. Reinstall any app from the Play Store |
 | `recommended` | **+** recommendation engine, Play Movies, partner promos, TalkBack, calendar/contact sync | Fewer "For you" rows |
 | `aggressive` | **+** Google Assistant/voice search, offline speech, TTS, Chromecast built-in, Live Channels, Ambient mode (which also hosts the Google Home panel) | **Voice search, casting, and Google Home voice control**. `./gtv.sh google-home` restores the Assistant |
+| `xiaomi` | Xiaomi tracking (`com.xiaomi.statistic`), promo auto-installer, Mi Music. Optional extras are listed in [`lists/xiaomi.txt`](lists/xiaomi.txt) | Nothing you'd notice. Use it on its own: `./gtv.sh debloat xiaomi` |
 | `custom` | Whatever you put in [`lists/custom.txt`](lists/custom.txt) (OEM apps, unused streaming apps) | Your choice |
 
 [`lists/protected.txt`](lists/protected.txt) lists packages the tool will **never** remove, even if you add them to a list: Play Services, Play Store, Settings, the keyboard, the setup wizard, the remote service and the stock launchers. Removing any of these can bootloop the TV or brick setup.

@@ -46,6 +46,15 @@ The **Google Home** button opens the TV's Home panel when `./gtv.sh google-home`
 
 You can also control your devices with the remote's mic button, or by long-pressing HOME on Google TV 12+. Long-press HOME opens Google TV's own Home panel, which is why `./gtv.sh glass` keeps the stock launcher enabled by default.
 
+## HOME button on Google TV
+
+Many Google TVs (Xiaomi, TCL, Chromecast) ignore the "default home app" setting. Glass handles this the same way Projectivy does: a small accessibility service, **Glass Launcher: open on HOME**, opens Glass whenever the Google TV home screen appears.
+
+- It only watches which screen opens, and only for the stock launcher. It reads no content.
+- `gtv glass` switches it on for you. If Projectivy's override is on, it asks before turning that off, so the two don't fight over HOME.
+- The stock launcher stays enabled, so the Google Home panel keeps working.
+- `gtv launcher-reset` puts your previous accessibility settings back, Projectivy included.
+
 ## Why it's smooth
 
 - **The glass costs almost nothing per frame.** Real-time blur is heavy on TV chips. Instead, the background is blurred **once** into a tiny 160×90 bitmap. Each glass card draws the part of that bitmap that sits behind it: one GPU-scaled bitmap shader, a tint, a highlight and a rim.

@@ -1,0 +1,14 @@
+# XIAOMI profile — Xiaomi / Mi TV extras (checked on a Xiaomi TV A Pro, Google TV).
+# Use on its own:  ./gtv.sh debloat xiaomi   (or menu 4 → x)
+com.xiaomi.statistic                      # Usage tracking and analytics
+android.autoinstalls.config.xiaomi.amelie # Re-installs promo apps after updates/resets
+com.xiaomi.mimusic2                       # Xiaomi music player
+
+# Optional: uncomment only if you don't use the feature.
+# com.xiaomi.mitv.mediaexplorer           # Plays videos/photos from USB drives
+# com.xiaomi.mitv.smartshare              # Phone screen mirroring (Miracast)
+# com.xiaomi.wfdsinkhelperservice         # Phone screen mirroring (Miracast) helper
+# com.xiaomi.mitv.tvmanager               # Cleaner / storage manager (frees very little)
+#
+# Keep: com.xiaomi.mitv.updateservice (security updates), and Xiaomi's settings,
+# quick settings, picture/sound mode and setup apps.

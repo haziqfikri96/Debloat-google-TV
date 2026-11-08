@@ -171,7 +171,8 @@ profile_files() {
     recommended) echo safe recommended ;;
     aggressive)  echo safe recommended aggressive ;;
     custom)      echo custom ;;
-    *) if [[ -f "$1" ]]; then echo "$1"; else die "Unknown profile '$1' (safe|recommended|aggressive|custom|<file>)"; fi ;;
+    xiaomi)      echo xiaomi ;;
+    *) if [[ -f "$1" ]]; then echo "$1"; else die "Unknown profile '$1' (safe|recommended|aggressive|xiaomi|custom|<file>)"; fi ;;
   esac
 }
 
@@ -346,12 +347,69 @@ glass_apk() {
   echo "$f"
 }
 
+# --------------------------------------------------------- HOME takeover ----
+# Google TV ignores the default-home setting on many TVs (e.g. Xiaomi). Glass
+# then catches the stock home screen with its accessibility service, exactly
+# like Projectivy's "override launcher". The stock launcher stays enabled so
+# the Google Home panel keeps working.
+GLASS_A11Y="$GLASS_PKG/$GLASS_PKG.HomeKeeperService"
+A11Y_BACKUP="$ROOT/.a11y-before"
+
+a11y_list() {
+  local v; v="$(q_ settings get secure enabled_accessibility_services 2>/dev/null || true)"
+  [[ "$v" == null ]] && v=""
+  echo "$v"
+}
+
+a11y_set() {
+  if [[ -z "$1" ]]; then
+    sh_ settings delete secure enabled_accessibility_services >/dev/null
+  else
+    sh_ settings put secure enabled_accessibility_services "'$1'" >/dev/null
+    sh_ settings put secure accessibility_enabled 1 >/dev/null
+  fi
+}
+
+enable_home_keeper() {
+  local cur new="" svc; cur="$(a11y_list)"
+  [[ -e "$A11Y_BACKUP" ]] || printf '%s\n' "$cur" > "$A11Y_BACKUP"
+  local drop_projectivy=0
+  if [[ "$cur" == *com.spocky.projengmenu/* ]]; then
+    warn "Projectivy's HOME override is on; it would fight with Glass for the HOME button."
+    if confirm "Turn off Projectivy's override? (Projectivy stays installed; gtv launcher-reset turns it back on)"; then
+      drop_projectivy=1
+    fi
+  fi
+  local IFS=:
+  for svc in $cur; do
+    [[ -z "$svc" || "$svc" == "$GLASS_A11Y" ]] && continue
+    (( drop_projectivy )) && [[ "$svc" == com.spocky.projengmenu/* ]] && continue
+    new="${new:+$new:}$svc"
+  done
+  unset IFS
+  new="${new:+$new:}$GLASS_A11Y"
+  a11y_set "$new"
+  ok "HOME takeover on: the HOME button and waking the TV now open Glass"
+  (( drop_projectivy )) && ok "Projectivy's override turned off"
+  [[ "$cur" == *flar2.homebutton/* ]] \
+    && warn "Button Mapper is on: make sure its Home button isn't set to open another launcher."
+  return 0
+}
+
+restore_home_keeper() {
+  [[ -e "$A11Y_BACKUP" ]] || return 0
+  a11y_set "$(cat "$A11Y_BACKUP")"
+  rm -f "$A11Y_BACKUP"
+  ok "Accessibility settings restored (Projectivy's override back if it was on)"
+}
+
 glass() {
   require_device
   local apk; apk="$(glass_apk)"
   local keep=1; [[ "${1:-}" == --replace ]] && keep=0
   KEEP_STOCK=$keep HOME_ACTIVITY="$GLASS_PKG/.HomeActivity" launcher "$apk"
   sh_ pm grant "$GLASS_PKG" android.permission.ACCESS_COARSE_LOCATION >/dev/null 2>&1 || true
+  enable_home_keeper
   apply_pending
   # Lets the launcher read a wallpaper pushed with `./gtv.sh wallpaper`.
   sh_ pm grant "$GLASS_PKG" android.permission.READ_MEDIA_IMAGES >/dev/null 2>&1 \
@@ -599,13 +657,14 @@ find_file() {
 # accessibility services such as Button Mapper or a launcher's "override home".
 check_home_overrides() {
   local want="${1:-}" svcs svc pkg found=0 name="${1:-your launcher}"
+  [[ "$want" == "$GLASS_PKG" ]] && return 0   # `glass` sets up the HOME takeover itself
   [[ "$want" == "$GLASS_PKG" ]] && name="Glass Launcher"
   svcs="$(q_ settings get secure enabled_accessibility_services 2>/dev/null || true)"
   [[ -z "$svcs" || "$svcs" == null ]] && return 0
   local IFS=:
   for svc in $svcs; do
     pkg="${svc%%/*}"
-    [[ -z "$pkg" || "$pkg" == "$want" ]] && continue
+    [[ -z "$pkg" || "$pkg" == "$want" || "$pkg" == "$GLASS_PKG" ]] && continue
     case "$pkg" in
       com.google.android.marvin.talkback|com.android.talkback) continue ;;
       flar2.homebutton)
@@ -663,7 +722,7 @@ launcher() {
 
   if [[ "${KEEP_STOCK:-0}" == 1 ]]; then
     ok "Stock launcher kept enabled (long-press HOME still opens the Google Home panel)."
-    warn "If HOME still opens Google TV, run: ./gtv.sh glass --replace"
+    [[ "$pkg" == "$GLASS_PKG" ]] || warn "If HOME still opens Google TV, turn on the launcher's own 'override home' option."
     check_home_overrides "$pkg"
     return 0
   fi
@@ -689,6 +748,7 @@ launcher_reset() {
     local act; act="$(home_activity_of "$s")"
     [[ -n "$act" ]] && sh_ cmd package set-home-activity "$act" >/dev/null 2>&1 || true
   done
+  restore_home_keeper
   info "Done. Press HOME on the remote."
 }
 
@@ -803,9 +863,9 @@ menu() {
          read -r -p "IP:PORT shown on the Wireless debugging screen: " ip
          if ( connect_tv "$ip" ); then SERIAL="$(cat "$DEVICE_FILE")"; ok "Connected to $SERIAL"; fi ;;
       3) ( debloat recommended && tweaks ) || true ;;
-      4) echo "  a) safe   b) recommended   c) aggressive (no voice search/casting)   d) custom"
+      4) echo "  a) safe   b) recommended   c) aggressive (no voice search/casting)   x) Xiaomi extras   d) custom"
          read -r -p "Level: " p
-         case "$p" in a) p=safe ;; b) p=recommended ;; c) p=aggressive ;; d) p=custom ;; *) continue ;; esac
+         case "$p" in a) p=safe ;; b) p=recommended ;; c) p=aggressive ;; x) p=xiaomi ;; d) p=custom ;; *) continue ;; esac
          ( debloat "$p" ) || true ;;
       5) read -r -p "Animation speed: 0 = off, 0.5 = fast (default), 1 = normal: " p
          ( tweaks "${p:-0.5}" ) || true ;;
@@ -853,7 +913,7 @@ Commands
   connect <IP[:PORT]>    Connect to the TV over Wi-Fi and remember it
   pair <IP:PORT> <CODE>  Pair using Wireless debugging (Google TV / Android 11+)
   all [profile]          backup + debloat + tweaks (default profile: recommended)
-  debloat [profile]      Remove bloat: safe | recommended | aggressive | custom | <file>
+  debloat [profile]      Remove bloat: safe | recommended | aggressive | xiaomi | custom | <file>
   tweaks [0|0.5|1]       Speed tweaks; arg = animation scale (default 0.5, 0 = off)
   glass [--replace]      Redesign: install the frosted-glass home screen (Glass Launcher)
                          --replace also disables the stock launcher (if HOME ignores Glass)
