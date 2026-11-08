@@ -325,6 +325,7 @@ glass() {
   local apk; apk="$(glass_apk)"
   if [[ "${1:-}" == --replace ]]; then KEEP_STOCK=0 launcher "$apk"; else KEEP_STOCK=1 launcher "$apk"; fi
   sh_ pm grant "$GLASS_PKG" android.permission.ACCESS_COARSE_LOCATION >/dev/null 2>&1 || true
+  apply_pending
   # Lets the launcher read a wallpaper pushed with `./gtv.sh wallpaper`.
   sh_ pm grant "$GLASS_PKG" android.permission.READ_MEDIA_IMAGES >/dev/null 2>&1 \
     || sh_ pm grant "$GLASS_PKG" android.permission.READ_EXTERNAL_STORAGE >/dev/null 2>&1 || true
@@ -367,8 +368,18 @@ urlencode() { local s="$1" out="" c i; for ((i = 0; i < ${#s}; i++)); do c="${s:
   case "$c" in [a-zA-Z0-9.~_-]) out+="$c" ;; ' ') out+="%20" ;; *) out+="$(printf '%%%02X' "'$c")" ;; esac; done; echo "$out"; }
 
 # Sends settings to Glass Launcher on the TV (it applies them instantly).
+glass_installed() { q_ pm list packages "$GLASS_PKG" | grep -qxF "package:$GLASS_PKG"; }
+
+PENDING_FILE="$ROOT/.glass-pending"
+
+# Sends settings to Glass Launcher. If it isn't installed yet, saves them and
+# returns 1; `glass` applies saved settings right after installing.
 glass_config() {
-  local args="" k v
+  if (( ! DRY_RUN )) && ! glass_installed; then
+    printf '%q ' "$@" >> "$PENDING_FILE"; echo >> "$PENDING_FILE"
+    return 1
+  fi
+  local args="" k v out
   while (( $# )); do
     k="$1" v="$2"; shift 2
     case "$k" in
@@ -376,7 +387,25 @@ glass_config() {
       *) args+=" --es $k $(printf '%q' "$v")" ;;
     esac
   done
-  sh_ "am start -n $GLASS_PKG/.HomeActivity -a io.github.debloatgtv.glass.CONFIG$args" >/dev/null
+  out="$(sh_ "am start -n $GLASS_PKG/.HomeActivity -a io.github.debloatgtv.glass.CONFIG$args" 2>&1 || true)"
+  if [[ "$out" == *Error* ]]; then warn "Glass Launcher didn't accept the settings: ${out##*Error: }"; return 2; fi
+  return 0
+}
+
+# Settings saved before Glass was installed.
+apply_pending() {
+  [[ -s "$PENDING_FILE" ]] || return 0
+  glass_installed || return 0
+  local line todo; todo="$(cat "$PENDING_FILE")"; rm -f "$PENDING_FILE"
+  while IFS= read -r line; do
+    [[ -n "$line" ]] && { eval "glass_config $line" || true; }
+  done <<<"$todo"
+  ok "Applied your saved settings (prayer location, Google Home, suggestions)"
+}
+
+not_yet() {
+  ok "$1 saved. The Glass home screen isn't installed yet:"
+  ok "choose g in the menu (or ./gtv.sh glass) and it will be applied automatically."
 }
 
 prayer() {
@@ -434,8 +463,11 @@ prayer() {
   [[ -n "$zone" ]] && cfg+=(zone "$zone")
   [[ -n "$lang" ]] && cfg+=(lang "$lang")
   [[ -n "$adjust" ]] && cfg+=(adjust "$adjust")
-  glass_config "${cfg[@]}"
-  ok "Prayer settings sent to Glass Launcher"
+  local rc=0; glass_config "${cfg[@]}" || rc=$?
+  case $rc in
+    0) ok "Prayer settings sent to Glass Launcher" ;;
+    1) not_yet "Prayer location" ;;
+  esac
 
   # Accuracy checks: the TV's clock and time zone must be right for the times to be right.
   local tv_tz tv_now my_now
@@ -498,10 +530,10 @@ google_home() {
     [[ "$i" =~ ^[0-9]+$ ]] && (( i >= 1 && i <= ${#panels[@]} )) && pick="${panels[$((i - 1))]}"
   fi
   if [[ -n "$pick" ]]; then
-    glass_config homePanel "$pick"
+    glass_config homePanel "$pick" || not_yet "Google Home button setting"
     ok "Google Home button opens $pick"
   else
-    glass_config homePanel ""
+    glass_config homePanel "" || true
     ok "No separate Home panel app found: the Google Home button starts Google Assistant."
   fi
   echo
@@ -517,7 +549,7 @@ suggestions() {
   local mode="${1:-}"
   [[ "$mode" =~ ^(on|off|reset)$ ]] || die "Usage: ./gtv.sh suggestions on|off|reset"
   require_device
-  glass_config suggestions "$mode"
+  if ! glass_config suggestions "$mode"; then not_yet "Suggestions setting"; return 0; fi
   ok "Suggested apps: $mode"
 }
 
