@@ -957,7 +957,7 @@ declare -A APP_NAMES=(
 )
 # Worth a warning before removing.
 declare -A APP_NOTES=(
-  [com.mitv.livetv]="may handle HDMI inputs / TV channels"
+  [com.mitv.livetv]="shows the HDMI inputs: keep it"
   [com.xiaomi.mitv.smartshare]="needed to mirror a phone screen"
   [flar2.homebutton]="your remote button shortcuts"
 )

@@ -23,3 +23,9 @@ com.google.android.tvlauncher
 com.google.android.leanbacklauncher
 com.google.android.webview
 com.android.webview
+# HDMI / AV inputs and the TV tuner (removing these breaks switching to a PS5, set-top box…)
+com.mitv.livetv
+com.mediatek.wwtv.tvcenter
+com.tcl.tv
+com.tcl.tvinput
+com.android.tv
