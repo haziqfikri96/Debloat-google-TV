@@ -10,11 +10,14 @@
 
 set -euo pipefail
 
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOT="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
 LISTS="$ROOT/lists"
 BACKUPS="$ROOT/backups"
+DEVICE_FILE="$ROOT/.gtv-device"   # last TV we connected to (handy on a phone)
 DRY_RUN=0
 SERIAL="${ANDROID_SERIAL:-}"
+IS_TERMUX=0
+[[ -n "${TERMUX_VERSION:-}" || -d /data/data/com.termux/files/usr ]] && IS_TERMUX=1
 
 # ---------------------------------------------------------------- output ----
 if [[ -t 1 ]]; then
@@ -48,19 +51,62 @@ sh_() {
 # Read-only shell command: always runs, even in dry-run mode.
 q_() { adb_ shell "$@" | tr -d '\r'; }
 
+require_adb() {
+  command -v adb >/dev/null && return
+  if (( IS_TERMUX )); then die "adb not found. Run: pkg install android-tools   (or ./setup-phone.sh)"; fi
+  die "adb not found. Install Android platform-tools: https://developer.android.com/tools/releases/platform-tools"
+}
+
+is_ip() { [[ "$1" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+(:[0-9]+)?$ ]]; }
+
+connect_tv() {
+  local addr="${1:-}"
+  is_ip "$addr" || die "'$addr' is not an IP address (example: 192.168.1.50 or 192.168.1.50:37123)"
+  [[ "$addr" == *:* ]] || addr="$addr:5555"
+  info "Connecting to $addr — accept the 'Allow debugging?' prompt on the TV if it appears"
+  local out; out="$(adb connect "$addr" 2>&1 || true)"
+  if [[ "$out" != *"connected to"* ]]; then
+    die "Could not connect: $out
+       - Phone and TV must be on the same Wi-Fi.
+       - Older TVs: Developer options > Network debugging (port 5555).
+       - Google TV 12+: Developer options > Wireless debugging. Pair first
+         (./gtv.sh pair <IP:PAIR-PORT> <CODE>), then connect to the IP:PORT shown there."
+  fi
+  SERIAL="$addr"
+  echo "$addr" > "$DEVICE_FILE"
+}
+
 require_device() {
-  command -v adb >/dev/null || die "adb not found. Install Android platform-tools: https://developer.android.com/tools/releases/platform-tools"
-  # Allow -s 192.168.1.50 as a shortcut for a network device.
-  if [[ "$SERIAL" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+(:[0-9]+)?$ ]]; then
+  require_adb
+  # Fall back to the TV remembered from the last connect.
+  if [[ -z "$SERIAL" && -s "$DEVICE_FILE" ]]; then SERIAL="$(cat "$DEVICE_FILE")"; fi
+  if is_ip "$SERIAL"; then
     [[ "$SERIAL" == *:* ]] || SERIAL="$SERIAL:5555"
     adb connect "$SERIAL" >/dev/null 2>&1 || true
   fi
   local state
-  state="$(adb_ get-state 2>/dev/null || true)"
-  if [[ "$state" != "device" ]]; then
-    die "No authorised device. Enable Developer options > USB/Network debugging on the TV,
-       then run: adb connect <TV-IP>   (and accept the prompt on the TV)."
+  state="$(adb_ get-state 2>&1 || true)"
+  [[ "$state" == "device" ]] && return
+  if [[ "$state" == *"more than one"* ]]; then
+    adb devices -l >&2
+    die "Several devices are connected; pick the TV with -s <serial|IP>."
   fi
+  if [[ "$state" == *unauthorized* ]]; then
+    die "The TV hasn't allowed this device yet. Accept the 'Allow debugging?' prompt on the TV and retry."
+  fi
+  die "No TV connected. Connect first:  ./gtv.sh connect <TV-IP>
+       (Developer options > USB/Network/Wireless debugging must be on; see README)."
+}
+
+pair_tv() {
+  require_adb
+  local addr="${1:-}" code="${2:-}"
+  [[ -n "$addr" && -n "$code" ]] || die "Usage: ./gtv.sh pair <IP:PAIRING-PORT> <6-digit-code>
+       (TV: Developer options > Wireless debugging > Pair device with pairing code)"
+  if ! is_ip "$addr" || [[ "$addr" != *:* ]]; then die "Pairing needs IP:PORT, e.g. 192.168.1.50:41235"; fi
+  local out; out="$(adb pair "$addr" "$code" 2>&1 || true)"
+  [[ "$out" == *Successfully* ]] || die "Pairing failed: $out"
+  ok "Paired. Now connect to the IP:PORT shown on the Wireless debugging screen (not the pairing port)."
 }
 
 installed_packages() { q_ pm list packages | sed 's/^package://' | sort; }
@@ -201,6 +247,23 @@ home_activity_of() {
      -c android.intent.category.HOME 2>/dev/null | grep "^$1/" | head -n1 || true
 }
 
+# Resolve an APK path, also checking the phone's / PC's Downloads folder.
+find_apk() {
+  local f="$1" d
+  [[ -f "$f" ]] && { echo "$f"; return; }
+  for d in "$HOME/storage/downloads" /sdcard/Download /storage/emulated/0/Download "$HOME/Downloads"; do
+    [[ -f "$d/$(basename "$f")" ]] && { echo "$d/$(basename "$f")"; return; }
+  done
+  return 1
+}
+
+downloaded_apks() {
+  local d
+  for d in "$HOME/storage/downloads" /sdcard/Download "$HOME/Downloads"; do
+    [[ -d "$d" ]] && find "$d" -maxdepth 1 -name '*.apk' 2>/dev/null
+  done | sort -u
+}
+
 launcher() {
   local target="${1:-}"
   [[ -n "$target" ]] || die "Usage: ./gtv.sh launcher <launcher.apk | package.name>"
@@ -209,13 +272,20 @@ launcher() {
 
   local pkg="$target"
   if [[ "$target" == *.apk ]]; then
-    [[ -f "$target" ]] || die "APK not found: $target"
-    info "Installing $(basename "$target")"
+    target="$(find_apk "$target")" || die "APK not found: $1 (looked here and in Downloads)"
+    info "Installing $(basename "$target") on the TV"
+    local before; before="$(installed_packages)"
     if (( DRY_RUN )); then printf '    [dry-run] adb install -r %s\n' "$target"
-    else adb_ install -r "$target" >/dev/null; fi
+    else adb_ install -r "$target" >/dev/null || die "Install failed"; fi
+    # Package name: from aapt if available, otherwise whatever is new on the TV
+    # (aapt usually isn't installed on a phone).
     pkg="$(aapt dump badging "$target" 2>/dev/null | sed -n "s/^package: name='\([^']*\)'.*/\1/p" || true)"
+    if [[ -z "$pkg" ]] && (( ! DRY_RUN )); then
+      pkg="$(comm -13 <(echo "$before") <(installed_packages) | head -n1)"
+    fi
     if [[ -z "$pkg" ]]; then
-      read -r -p "Package name of the launcher you just installed: " pkg
+      if (( DRY_RUN )); then pkg="<launcher>"
+      else read -r -p "Package name of the launcher you just installed: " pkg; fi
     fi
   fi
   is_protected "$pkg" && [[ ! " ${STOCK_LAUNCHERS[*]} " == *" $pkg "* ]] && die "$pkg is not a launcher"
@@ -322,11 +392,68 @@ packages() {
   if [[ -n "${1:-}" ]]; then installed_packages | grep -i -- "$1" || true; else installed_packages; fi
 }
 
+# ------------------------------------------------------------------ menu ----
+# Number-driven menu: easy to use from a phone keyboard in Termux.
+menu() {
+  local choice ip code apk p i cur
+  local -a apks
+  while true; do
+    cur="not connected"
+    [[ -s "$DEVICE_FILE" ]] && cur="$(cat "$DEVICE_FILE")"
+    [[ -n "$SERIAL" ]] && cur="$SERIAL"
+    printf '\n%sDebloat Google TV%s   TV: %s\n' "$C_B" "$C_0" "$cur"
+    printf '  %s\n' \
+      "1) Connect to TV" \
+      "2) Pair TV (Google TV 12+ wireless debugging)" \
+      "3) Make it fast (backup + recommended debloat + speed tweaks)" \
+      "4) Debloat only (choose level)" \
+      "5) Speed tweaks only" \
+      "6) New home screen (launcher)" \
+      "7) Bring back stock home screen" \
+      "8) Status" \
+      "9) Undo everything" \
+      "r) Reboot TV" \
+      "0) Exit"
+    read -r -p "Choose: " choice || return 0
+    case "$choice" in
+      1) read -r -p "TV IP address (TV: Settings > Network): " ip
+         if ( connect_tv "$ip" ); then SERIAL="$(cat "$DEVICE_FILE")"; ok "Connected to $SERIAL"; fi ;;
+      2) read -r -p "IP:PORT under 'Pair device with pairing code': " ip
+         read -r -p "6-digit code: " code
+         ( pair_tv "$ip" "$code" ) || continue
+         read -r -p "IP:PORT shown on the Wireless debugging screen: " ip
+         if ( connect_tv "$ip" ); then SERIAL="$(cat "$DEVICE_FILE")"; ok "Connected to $SERIAL"; fi ;;
+      3) ( debloat recommended && tweaks ) || true ;;
+      4) echo "  a) safe   b) recommended   c) aggressive (no voice search/casting)   d) custom"
+         read -r -p "Level: " p
+         case "$p" in a) p=safe ;; b) p=recommended ;; c) p=aggressive ;; d) p=custom ;; *) continue ;; esac
+         ( debloat "$p" ) || true ;;
+      5) read -r -p "Animation speed: 0 = off, 0.5 = fast (default), 1 = normal: " p
+         ( tweaks "${p:-0.5}" ) || true ;;
+      6) mapfile -t apks < <(downloaded_apks)
+         if (( ${#apks[@]} )); then
+           echo "APKs in Downloads:"
+           for i in "${!apks[@]}"; do printf '  %d) %s\n' $((i + 1)) "$(basename "${apks[$i]}")"; done
+         fi
+         read -r -p "Number from the list, an APK path, or an installed package name: " apk
+         if [[ "$apk" =~ ^[0-9]+$ ]] && (( apk >= 1 && apk <= ${#apks[@]} )); then apk="${apks[$((apk - 1))]}"; fi
+         [[ -n "$apk" ]] && { ( launcher "$apk" ) || true; } ;;
+      7) ( launcher_reset ) || true ;;
+      8) ( status ) || true ;;
+      9) ( restore ) || true ;;
+      r|R) ( require_device; info "Rebooting"; adb_ reboot ) || true ;;
+      0|q|Q) return 0 ;;
+      *) warn "Unknown choice '$choice'" ;;
+    esac
+  done
+}
+
 usage() {
   cat <<EOF
 gtv.sh — make Android TV / Google TV fast again (all changes reversible)
 
-Usage: ./gtv.sh [-s SERIAL|IP] [-n] [-y] <command> [args]
+Usage: ./gtv.sh                      (interactive menu - easiest on a phone)
+       ./gtv.sh [-s SERIAL|IP] [-n] [-y] <command> [args]
 
 Options
   -s SERIAL|IP   Target device (an IP like 192.168.1.50 auto-connects on :5555)
@@ -334,6 +461,9 @@ Options
   -y             Don't ask for confirmation
 
 Commands
+  menu                   Interactive numbered menu (default with no command)
+  connect <IP[:PORT]>    Connect to the TV over Wi-Fi and remember it
+  pair <IP:PORT> <CODE>  Pair using Wireless debugging (Google TV / Android 11+)
   all [profile]          backup + debloat + tweaks (default profile: recommended)
   debloat [profile]      Remove bloat: safe | recommended | aggressive | custom | <file>
   tweaks [0|0.5|1]       Speed tweaks; arg = animation scale (default 0.5, 0 = off)
@@ -360,8 +490,11 @@ while getopts ":s:nyh" opt; do
 done
 shift $((OPTIND - 1))
 
-cmd="${1:-help}"; shift || true
+if [[ $# -eq 0 && -t 0 ]]; then cmd=menu; else cmd="${1:-help}"; shift || true; fi
 case "$cmd" in
+  menu)           menu ;;
+  connect)        require_adb; connect_tv "${1:-}"; ok "Connected to $SERIAL (remembered for next time)" ;;
+  pair)           pair_tv "$@" ;;
   all)            debloat "${1:-recommended}"; tweaks ;;
   debloat)        debloat "$@" ;;
   tweaks)         tweaks "$@" ;;

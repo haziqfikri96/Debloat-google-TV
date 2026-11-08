@@ -8,7 +8,58 @@ Everything runs over ADB from your computer. You don't need root, and **every ch
 - Before the first change, the script saves a backup of your packages, settings and home app.
 - `./gtv.sh restore` puts the TV back the way it was.
 
-## Quick start
+## Install from your phone (no computer needed)
+
+You can do everything from an **Android phone** on the same Wi-Fi as the TV.
+
+**1. Turn on debugging on the TV**
+
+- Settings → System → About → click **Android TV OS build** 7 times. This turns on Developer options.
+- Settings → System → Developer options:
+  - **Google TV / Android 11 and newer:** turn on **Wireless debugging**.
+  - **Older Android TV:** turn on **USB debugging** / **Network debugging**.
+
+**2. Set up the phone (one time)**
+
+- Install **Termux** from [F-Droid](https://f-droid.org/packages/com.termux/) or [GitHub](https://github.com/termux/termux-app/releases). The Play Store version is outdated and won't work.
+- Open Termux and paste:
+
+```bash
+pkg install -y git && git clone https://github.com/haziqfikri96/Debloat-google-TV.git
+cd Debloat-google-TV && bash setup-phone.sh
+```
+
+This installs `adb` and asks for access to your Downloads folder (tap **Allow**). It also adds a `gtv` shortcut.
+
+**3. Run it:** type `gtv` and pick numbers from the menu:
+
+```
+Debloat Google TV   TV: not connected
+  1) Connect to TV
+  2) Pair TV (Google TV 12+ wireless debugging)
+  3) Make it fast (backup + recommended debloat + speed tweaks)
+  4) Debloat only (choose level)
+  5) Speed tweaks only
+  6) New home screen (launcher)
+  7) Bring back stock home screen
+  8) Status
+  9) Undo everything
+  r) Reboot TV
+  0) Exit
+```
+
+- **Older TVs (Network debugging):** choose **1**, enter the TV's IP (Settings → Network), then accept *Allow debugging?* on the TV.
+- **Google TV with Wireless debugging:** choose **2**. On the TV, open *Wireless debugging → Pair device with pairing code*. Enter the **IP:port and code** shown there. Then enter the **IP:port on the main Wireless debugging screen**. Note that the two ports are different.
+- Then choose **3** to make the TV fast, and **r** to reboot.
+- **New home screen from your phone:** download the launcher APK in your phone's browser, then choose **6**. APKs in your Downloads folder are listed by number.
+
+The TV address is remembered, so the next time you open `gtv`, you can go straight to any option.
+
+> **Tip:** Termux on Android 12+ can get killed in the background. Keep Termux on screen while it works, especially during the "pre-compiling apps" step.
+>
+> **iPhone:** iOS can't run `adb`, so use a computer (below) instead.
+
+## Quick start (computer)
 
 1. **On the TV:** Settings → System → About → click **Build** 7 times. Then Settings → System → Developer options → turn on **USB debugging** (on Google TV this also turns on network debugging).
 2. **On your computer:** install [Android platform-tools](https://developer.android.com/tools/releases/platform-tools) so `adb` is on your PATH.
@@ -30,6 +81,9 @@ cd Debloat-google-TV
 
 | Command | What it does |
 |---|---|
+| *(no command)* / `menu` | Numbered interactive menu, easiest on a phone |
+| `connect <IP[:PORT]>` | Connects over Wi-Fi and remembers the TV for later runs |
+| `pair <IP:PORT> <CODE>` | Pairs with *Wireless debugging* (Google TV / Android 11+) |
 | `all [profile]` | Backup, debloat (default `recommended`), then speed tweaks |
 | `debloat <profile>` | Removes the packages in a profile (see below) |
 | `tweaks [0\|0.5\|1]` | Speed tweaks. The argument is the animation speed (default `0.5`; `0` turns animations off) |
@@ -40,7 +94,7 @@ cd Debloat-google-TV
 | `packages [filter]` | Lists installed packages, e.g. to find OEM bloat |
 | `backup` / `backups` | Takes a snapshot / lists snapshots |
 
-Options: `-s SERIAL|IP` picks the device, `-n` is a dry run, `-y` skips confirmation.
+Once you `connect`, you don't need `-s` again. Options: `-s SERIAL|IP` picks the device, `-n` is a dry run, `-y` skips confirmation.
 
 ## Debloat profiles
 
