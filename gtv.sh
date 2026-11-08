@@ -495,6 +495,7 @@ glass() {
   sh_ pm grant "$GLASS_PKG" android.permission.ACCESS_COARSE_LOCATION >/dev/null 2>&1 || true
   enable_home_keeper
   screensaver on
+  reapply_config
   apply_pending
   # Lets the launcher read a wallpaper pushed with `./gtv.sh wallpaper`.
   sh_ pm grant "$GLASS_PKG" android.permission.READ_MEDIA_IMAGES >/dev/null 2>&1 \
@@ -550,6 +551,7 @@ glass_config() {
     return 1
   fi
   local args="" k v out
+  local -a saved_args=("$@")
   while (( $# )); do
     k="$1" v="$2"; shift 2
     case "$k" in
@@ -559,6 +561,32 @@ glass_config() {
   done
   out="$(sh_ "am start -n $GLASS_PKG/.HomeActivity -a io.github.debloatgtv.glass.CONFIG$args" 2>&1 || true)"
   if [[ "$out" == *Error* ]]; then warn "Glass Launcher didn't accept the settings: ${out##*Error: }"; return 2; fi
+  remember_config "${saved_args[@]}"
+  return 0
+}
+
+# Settings sent to Glass, so they survive a reinstall (CI builds are signed with a
+# fresh key each time, so an update means uninstall + install, which wipes app data).
+CONFIG_FILE="$ROOT/.glass-config"
+remember_config() {
+  (( DRY_RUN )) && return 0
+  local k v tmp
+  while (( $# >= 2 )); do
+    k="$1" v="$2"; shift 2
+    tmp="$(grep -v "^$k	" "$CONFIG_FILE" 2>/dev/null || true)"
+    printf '%s\n%s\t%s\n' "$tmp" "$k" "$v" | grep -v '^$' > "$CONFIG_FILE"
+  done
+}
+
+reapply_config() {
+  [[ -s "$CONFIG_FILE" ]] || return 0
+  local -a args=()
+  local k v
+  while IFS=$'\t' read -r k v; do
+    [[ -n "$k" ]] && args+=("$k" "$v")
+  done < "$CONFIG_FILE"
+  (( ${#args[@]} )) || return 0
+  glass_config "${args[@]}" >/dev/null 2>&1 && ok "Restored your Glass settings (prayer location, Google Home, suggestions)"
   return 0
 }
 
@@ -953,7 +981,7 @@ declare -A APP_NAMES=(
   [com.xiaomi.mitv.smartshare]="Screen mirroring (Miracast)"
   [com.xiaomi.mitv.tvmanager]="TV Manager"            [flar2.homebutton]="Button Mapper"
   [com.spocky.projengmenu]="Projectivy Launcher"      [org.videolan.vlc]="VLC"
-  [com.plexapp.android]="Plex"                        [com.google.android.videos]="Google TV (Play Movies)"
+  [com.plexapp.android]="Plex"                        [com.niklabs.pp]="Perfect Player"                        [com.google.android.videos]="Google TV (Play Movies)"
 )
 # Worth a warning before removing.
 declare -A APP_NOTES=(
@@ -1010,6 +1038,19 @@ apps() {
   for p in "${chosen[@]}"; do printf '    %s\n' "${APP_NAMES[$p]:-$p}"; done
   confirm "Remove these ${#chosen[@]} app(s)? Preinstalled ones can be brought back with 'Undo everything'." || return 0
   uninstall_apps "${chosen[@]}"
+}
+
+# Open an app's Play Store page on the TV, so it is installed only when you press Install.
+get_app() {
+  local p="${1:-}"
+  case "$p" in
+    perfect|perfectplayer|"perfect-player") p=com.niklabs.pp ;;
+  esac
+  [[ "$p" == *.* ]] || die "Usage: ./gtv.sh get <package>   e.g. ./gtv.sh get com.niklabs.pp  (or: gtv get perfect)"
+  require_device
+  if grep -qxF "$p" <<<"$(installed_packages)"; then ok "${APP_NAMES[$p]:-$p} is already installed"; return 0; fi
+  sh_ am start -a android.intent.action.VIEW -d "market://details?id=$p" >/dev/null
+  ok "Play Store opened on the TV: press Install with the remote"
 }
 
 packages() {
@@ -1128,6 +1169,7 @@ Commands
   screensaver on|off     Glass StandBy clock screensaver (clock + next prayer)
   packages [filter]      List installed packages
   apps                   Numbered list of home-screen apps; pick numbers to remove
+  get <package>          Open an app's Play Store page on the TV (e.g. gtv get perfect)
   uninstall <pkg>...     Remove apps (preinstalled ones reversibly, like debloat)
   reboot                 Reboot the TV
 EOF
@@ -1171,6 +1213,7 @@ case "$cmd" in
   packages)       packages "$@" ;;
   uninstall)      uninstall_apps "$@" ;;
   apps)           apps ;;
+  get)            get_app "$@" ;;
   recheck)        recheck ;;
   bring-back)     bring_back "$@" ;;
   screensaver)    screensaver "$@" ;;
