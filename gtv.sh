@@ -261,8 +261,20 @@ STOCK_LAUNCHERS=(com.google.android.apps.tv.launcherx com.google.android.tvlaunc
 
 # Home activities offered by a package, e.g. com.spocky.projengmenu/.ui.MainActivity
 home_activity_of() {
-  q_ cmd package query-activities --brief -a android.intent.action.MAIN \
-     -c android.intent.category.HOME 2>/dev/null | grep "^$1/" | head -n1 || true
+  local pkg="$1" re out
+  re="${pkg//./\\.}/[A-Za-z0-9_.\$]+"
+  # Newer Android: list HOME activities (output format varies, so match anywhere on a line).
+  out="$(q_ cmd package query-activities --brief -a android.intent.action.MAIN \
+         -c android.intent.category.HOME 2>/dev/null || true)"
+  out="$(grep -oE "$re" <<<"$out" | head -n1 || true)"
+  # Older Android: the package's own dump lists its activities.
+  if [[ -z "$out" ]]; then
+    out="$(q_ dumpsys package "$pkg" 2>/dev/null | grep -A3 'android.intent.category.HOME' | grep -oE "$re" | head -n1 || true)"
+  fi
+  if [[ -z "$out" ]]; then
+    out="$(q_ dumpsys package "$pkg" 2>/dev/null | grep -oE "$re" | head -n1 || true)"
+  fi
+  echo "$out"
 }
 
 # Resolve an APK path, also checking the phone's / PC's Downloads folder.
@@ -323,7 +335,8 @@ glass_apk() {
 glass() {
   require_device
   local apk; apk="$(glass_apk)"
-  if [[ "${1:-}" == --replace ]]; then KEEP_STOCK=0 launcher "$apk"; else KEEP_STOCK=1 launcher "$apk"; fi
+  local keep=1; [[ "${1:-}" == --replace ]] && keep=0
+  KEEP_STOCK=$keep HOME_ACTIVITY="$GLASS_PKG/.HomeActivity" launcher "$apk"
   sh_ pm grant "$GLASS_PKG" android.permission.ACCESS_COARSE_LOCATION >/dev/null 2>&1 || true
   apply_pending
   # Lets the launcher read a wallpaper pushed with `./gtv.sh wallpaper`.
@@ -592,7 +605,8 @@ launcher() {
   fi
   is_protected "$pkg" && [[ ! " ${STOCK_LAUNCHERS[*]} " == *" $pkg "* ]] && die "$pkg is not a launcher"
 
-  local activity; activity="$(home_activity_of "$pkg")"
+  local activity="${HOME_ACTIVITY:-}"
+  [[ -n "$activity" ]] || activity="$(home_activity_of "$pkg")"
   [[ -n "$activity" || $DRY_RUN == 1 ]] || die "$pkg is not installed or has no HOME activity"
 
   info "Setting $pkg as the home screen"
