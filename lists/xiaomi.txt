@@ -1,14 +1,33 @@
-# XIAOMI profile — Xiaomi / Mi TV extras (checked on a Xiaomi TV A Pro, Google TV).
+# XIAOMI profile — Xiaomi / Mi TV / Mi Box extras (checked on a Xiaomi TV A Pro, Google TV 11).
 # Use on its own:  ./gtv.sh debloat xiaomi   (or menu 4 → x)
-com.xiaomi.statistic                      # Usage tracking and analytics
+# Package knowledge partly from CleanYourTV (MIT, github.com/Gathin23/cleanyourtv) device lists.
+
+# Tracking and analytics
+com.xiaomi.statistic                      # Xiaomi usage analytics
+com.miui.tv.analytics                     # Xiaomi TV analytics
+tv.alphonso.alphonso_eula                 # Alphonso ACR: recognises what's on screen for ad targeting
+
+# Promo content and auto-installed apps
 android.autoinstalls.config.xiaomi.amelie # Re-installs promo apps after updates/resets
+com.mitv.tvhome.michannel                 # PatchWall channels/rows pushed to the home screen
+com.xm.webcontent                         # Promo web content (also fetches screensaver ads)
+com.xiaomi.floatingframe                  # Promo pop-up frames
 com.xiaomi.mimusic2                       # Xiaomi music player
 
+# Netflix / Prime Video coming back after you removed them?
+# com.mstar.netflixobserver re-installs them at every boot. It also drives the remote's
+# Netflix button. Uncomment only if you removed Netflix/Prime and don't use that button.
+# com.mstar.netflixobserver
+
 # Optional: uncomment only if you don't use the feature.
+# com.mitv.tvhome.atv                     # PatchWall app
+# com.mitv.tvhome.mitvplus                # Xiaomi TV+ free channels
+# com.mitv.gallery                        # Mi Gallery (Media Player still opens USB photos)
+# com.mitv.dream                          # Xiaomi wallpaper screensaver
 # com.xiaomi.mitv.mediaexplorer           # Plays videos/photos from USB drives
 # com.xiaomi.mitv.smartshare              # Phone screen mirroring (Miracast)
 # com.xiaomi.wfdsinkhelperservice         # Phone screen mirroring (Miracast) helper
 # com.xiaomi.mitv.tvmanager               # Cleaner / storage manager (frees very little)
 #
-# Keep: com.xiaomi.mitv.updateservice (security updates), and Xiaomi's settings,
-# quick settings, picture/sound mode and setup apps.
+# Keep: com.xiaomi.mitv.updateservice (security updates); anything named tvinput, tvcenter,
+# livetv or mitv.service (HDMI inputs / tuner); Xiaomi settings, quick settings, picture modes.

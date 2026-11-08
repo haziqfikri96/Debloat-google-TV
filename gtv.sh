@@ -132,6 +132,72 @@ installed_for_any() { q_ pm list packages -u | sed 's/^package://' | sort; }
 # Strip comments/blank lines from a list file.
 read_list() { sed -e 's/#.*//' -e 's/[[:space:]]//g' -e '/^$/d' "$1"; }
 
+# Everything gtv removed, so `status` / `recheck` can spot apps that came back.
+REMOVED_LOG="$ROOT/.removed"
+note_removed() { (( DRY_RUN )) && return 0; grep -qxF "$1" "$REMOVED_LOG" 2>/dev/null || echo "$1" >> "$REMOVED_LOG"; }
+
+came_back() {
+  [[ -s "$REMOVED_LOG" ]] || return 0
+  local installed p; installed="$(installed_packages)"
+  while IFS= read -r p; do
+    [[ -n "$p" ]] && grep -qxF "$p" <<<"$installed" && echo "$p"
+  done < "$REMOVED_LOG"
+  return 0
+}
+
+recheck() {
+  require_device
+  local -a back=()
+  mapfile -t back <<<"$(came_back)"
+  [[ -z "${back[0]:-}" ]] && back=()
+  if (( ${#back[@]} == 0 )); then ok "Nothing came back. Everything gtv removed is still gone."; return 0; fi
+  info "These came back (a TV update or a system app re-installed them):"
+  printf '    %s\n' "${back[@]}"
+  [[ " ${back[*]} " == *" com.netflix.ninja "* || " ${back[*]} " == *" com.amazon.amazonvideo.livingroom "* ]] \
+    && warn "On Xiaomi, com.mstar.netflixobserver re-installs Netflix/Prime at boot: see lists/xiaomi.txt."
+  confirm "Remove them again?" || return 0
+  local p out
+  for p in "${back[@]}"; do
+    out="$(sh_ pm uninstall -k --user 0 "$p" 2>&1 || true)"
+    if [[ "$out" == *Success* ]]; then ok "removed $p again"; else warn "$p: ${out:-failed}"; fi
+  done
+}
+
+# Bring back apps that gtv removed (numbered picker, or package names).
+bring_back() {
+  require_device
+  local -a list=() chosen=()
+  if (( $# )); then
+    chosen=("$@")
+  else
+    [[ -s "$REMOVED_LOG" ]] || die "gtv hasn't removed anything yet (or the TV was reset)."
+    local installed p; installed="$(installed_packages)"
+    while IFS= read -r p; do
+      [[ -n "$p" ]] && ! grep -qxF "$p" <<<"$installed" && list+=("$p")
+    done < "$REMOVED_LOG"
+    (( ${#list[@]} )) || { ok "Everything gtv removed is already back."; return 0; }
+    info "Apps gtv removed"
+    local i; for i in "${!list[@]}"; do
+      p="${list[$i]}"; printf '  %2d) %s\n' $((i + 1)) "${APP_NAMES[$p]:-$p}"
+    done
+    local nums; read -r -p "Numbers to bring back (e.g. 1 3), Enter = cancel: " nums || return 0
+    for i in ${nums//,/ }; do
+      [[ "$i" =~ ^[0-9]+$ ]] && (( i >= 1 && i <= ${#list[@]} )) && chosen+=("${list[$((i - 1))]}")
+    done
+  fi
+  local p out
+  for p in "${chosen[@]}"; do
+    out="$(sh_ cmd package install-existing --user 0 "$p" 2>&1 || true)"
+    [[ "$out" == *nstalled* || "$out" == *Success* ]] || out="$(sh_ pm enable "$p" 2>&1 || true)"
+    if [[ "$out" == *nstalled* || "$out" == *Success* || "$out" == *enabled* ]]; then
+      ok "brought back ${APP_NAMES[$p]:-$p}"
+      [[ -f "$REMOVED_LOG" ]] && { grep -vxF "$p" "$REMOVED_LOG" > "$REMOVED_LOG.tmp" || true; mv "$REMOVED_LOG.tmp" "$REMOVED_LOG"; }
+    else
+      warn "$p: ${out:-failed} (apps you installed yourself must be reinstalled from the Play Store)"
+    fi
+  done
+}
+
 is_protected() { read_list "$LISTS/protected.txt" | grep -qxF "$1"; }
 
 # ---------------------------------------------------------------- backup ----
@@ -149,7 +215,7 @@ backup() {
              wifi_scan_always_enabled ble_scan_always_enabled; do
       printf 'global %s %s\n' "$k" "$(q_ settings get global "$k")"
     done
-    for k in screensaver_enabled screensaver_activate_on_sleep; do
+    for k in screensaver_enabled screensaver_activate_on_sleep screensaver_components; do
       printf 'secure %s %s\n' "$k" "$(q_ settings get secure "$k")"
     done
   } > "$dir/settings.txt"
@@ -210,11 +276,11 @@ debloat() {
     sh_ am force-stop "$p" >/dev/null 2>&1 || true
     out="$(sh_ pm uninstall -k --user 0 "$p" 2>&1 || true)"
     if (( DRY_RUN )) || [[ "$out" == *Success* ]]; then
-      ok "$p"; removed=$((removed + 1))
+      ok "$p"; removed=$((removed + 1)); note_removed "$p"
     else
       # Some system packages refuse uninstall; disabling is the next best thing.
       out="$(sh_ pm disable-user --user 0 "$p" 2>&1 || true)"
-      if [[ "$out" == *disabled* ]]; then ok "$p (disabled)"; removed=$((removed + 1))
+      if [[ "$out" == *disabled* ]]; then ok "$p (disabled)"; removed=$((removed + 1)); note_removed "$p"
       else warn "$p: ${out:-failed}"; fi
     fi
   done
@@ -403,6 +469,24 @@ restore_home_keeper() {
   ok "Accessibility settings restored (Projectivy's override back if it was on)"
 }
 
+# Glass's StandBy clock (big clock + next prayer, offline, burn-in safe).
+screensaver() {
+  local mode="${1:-on}"
+  require_device
+  case "$mode" in
+    on)
+      sh_ settings put secure screensaver_components "$GLASS_PKG/$GLASS_PKG.ClockDream" >/dev/null
+      sh_ settings put secure screensaver_enabled 1 >/dev/null
+      ok "StandBy clock screensaver on (shows after the TV's screensaver delay; change it in TV Settings > System > Ambient mode / Screen saver)"
+      ;;
+    off)
+      sh_ settings put secure screensaver_enabled 0 >/dev/null
+      ok "Screensaver off"
+      ;;
+    *) die "Usage: ./gtv.sh screensaver on|off" ;;
+  esac
+}
+
 glass() {
   require_device
   local apk; apk="$(glass_apk)"
@@ -410,6 +494,7 @@ glass() {
   KEEP_STOCK=$keep HOME_ACTIVITY="$GLASS_PKG/.HomeActivity" launcher "$apk"
   sh_ pm grant "$GLASS_PKG" android.permission.ACCESS_COARSE_LOCATION >/dev/null 2>&1 || true
   enable_home_keeper
+  screensaver on
   apply_pending
   # Lets the launcher read a wallpaper pushed with `./gtv.sh wallpaper`.
   sh_ pm grant "$GLASS_PKG" android.permission.READ_MEDIA_IMAGES >/dev/null 2>&1 \
@@ -808,6 +893,11 @@ status() {
   info "HOME button overrides"
   local before_warn; before_warn="$(check_home_overrides "" 2>&1)"
   if [[ -n "$before_warn" ]]; then printf '%s\n' "$before_warn"; else ok "none"; fi
+  info "Removed apps that came back"
+  local back; back="$(came_back)"
+  if [[ -n "$back" ]]; then
+    local -a b; mapfile -t b <<<"$back"; printf '    %s\n' "${b[@]}"; warn "Run: gtv recheck"
+  else ok "none"; fi
   info "Bloat still installed"
   local installed f p any=0; installed="$(installed_packages)"
   for f in safe recommended aggressive; do
@@ -835,7 +925,7 @@ uninstall_apps() {
       # Preinstalled: remove for this user only (like debloat), so `restore` can bring it back.
       (( DRY_RUN )) || ensure_backup
       out="$(sh_ pm uninstall -k --user 0 "$p" 2>&1 || true)"
-      if (( DRY_RUN )) || [[ "$out" == *Success* ]]; then ok "removed $p (preinstalled; ./gtv.sh restore brings it back)"
+      if (( DRY_RUN )) || [[ "$out" == *Success* ]]; then ok "removed $p (preinstalled; ./gtv.sh restore brings it back)"; note_removed "$p"
       else
         out="$(sh_ pm disable-user --user 0 "$p" 2>&1 || true)"
         if [[ "$out" == *disabled* ]]; then ok "disabled $p"; else warn "$p: ${out:-failed}"; fi
@@ -844,7 +934,7 @@ uninstall_apps() {
     fi
     if (( DRY_RUN )); then printf '    [dry-run] adb uninstall %s\n' "$p"; continue; fi
     out="$(adb_ uninstall "$p" 2>&1 || true)"
-    if [[ "$out" == *Success* ]]; then ok "removed $p"
+    if [[ "$out" == *Success* ]]; then ok "removed $p"; note_removed "$p"
     else warn "$p: ${out:-failed}"; fi
   done
 }
@@ -948,6 +1038,7 @@ menu() {
       "p) Prayer times location" \
       "h) Google Home control" \
       "u) Remove apps (pick by number)" \
+      "b) Bring back removed apps" \
       "6) Other launcher (APK or package)" \
       "7) Bring back stock home screen" \
       "8) Status" \
@@ -987,6 +1078,7 @@ menu() {
            [[ -n "$p" ]] && { ( prayer "$p" ) || true; } ;;
       h|H) ( google_home ) || true ;;
       u|U) ( apps ) || true ;;
+      b|B) ( bring_back ) || true ;;
       w|W) read -r -p "Photo file name in Downloads/Pictures (or full path), or 'remove': " p
            [[ "$p" == remove ]] && p=--remove
            [[ -n "$p" ]] && { ( wallpaper "$p" ) || true; } ;;
@@ -1030,7 +1122,10 @@ Commands
   backup                 Snapshot packages + settings (done automatically before changes)
   backups                List backups
   restore [name]         Undo everything (default: 'original' = state before first run)
-  status                 Device info, memory, remaining bloat
+  status                 Device info, memory, remaining bloat, apps that came back
+  recheck                Remove again any removed app that came back (after updates/reboots)
+  bring-back [pkg...]    Bring back apps gtv removed (numbered picker without arguments)
+  screensaver on|off     Glass StandBy clock screensaver (clock + next prayer)
   packages [filter]      List installed packages
   apps                   Numbered list of home-screen apps; pick numbers to remove
   uninstall <pkg>...     Remove apps (preinstalled ones reversibly, like debloat)
@@ -1076,6 +1171,9 @@ case "$cmd" in
   packages)       packages "$@" ;;
   uninstall)      uninstall_apps "$@" ;;
   apps)           apps ;;
+  recheck)        recheck ;;
+  bring-back)     bring_back "$@" ;;
+  screensaver)    screensaver "$@" ;;
   reboot)         require_device; info "Rebooting"; adb_ reboot ;;
   help|-h|--help) usage ;;
   *)              usage; exit 1 ;;

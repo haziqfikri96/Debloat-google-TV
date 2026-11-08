@@ -68,6 +68,18 @@
             </intent-filter>
         </activity>
 
+        <!-- StandBy clock screensaver (turned on by `gtv screensaver on`). -->
+        <service
+            android:name=".ClockDream"
+            android:exported="true"
+            android:label="Glass clock"
+            android:permission="android.permission.BIND_DREAM_SERVICE">
+            <intent-filter>
+                <action android:name="android.service.dreams.DreamService" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </service>
+
         <!-- Optional HOME takeover (turned on by `gtv glass`, or Settings > Accessibility). -->
         <service
             android:name=".HomeKeeperService"

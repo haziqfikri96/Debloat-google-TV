@@ -10,3 +10,7 @@ com.google.android.partnersetup           # Partner setup / promo
 com.google.android.marvin.talkback        # TalkBack (re-enable if you need accessibility)
 com.google.android.syncadapters.calendar  # Calendar sync
 com.google.android.syncadapters.contacts  # Contacts sync
+# Telemetry seen on Google TV builds (from CleanYourTV device lists, MIT)
+com.android.tv.feedbackconsent            # Feedback consent prompt / upload
+com.google.android.tv.remotecontrol.logging # Remote-control usage logging
+com.google.android.apps.tv.netoscope      # Network diagnostics reporting

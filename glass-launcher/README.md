@@ -38,6 +38,18 @@ It also checks that the TV's clock and time zone are correct, because a wrong TV
 - Long-press OK (or press MENU) on an app to open **App info**. On a suggestion, it **hides** the tile.
 - `./gtv.sh suggestions off|on|reset` turns suggestions off or on, or brings back hidden ones.
 
+## Inputs, Move and Hide
+
+- **Inputs:** a glass **Inputs** button lists the TV's HDMI and AV inputs (PS5, set-top box…) and switches to one. It only appears on TVs that have inputs. Inputs are shown by the TV's own Live TV app, so if you removed it, bring it back with `gtv bring-back`.
+- **Long-press OK** (or press MENU) on an app for a glass menu:
+  - **Move:** the app wiggles. The arrows carry it, and OK puts it down. Your order is kept, and new apps join at the end.
+  - **Hide from Home:** keeps an app installed but off your screen, which is handy for Settings-type tiles you can't uninstall. **Show hidden apps** brings them all back.
+  - **App info.**
+
+## StandBy clock
+
+A screensaver with a big clock on black, the date and Hijri date, and the next prayer with a countdown. It works offline from the cached prayer timetable. It drifts a little every minute so nothing burns into the screen, and it turns dim red between 11 pm and 5 am. `gtv glass` turns it on, and `gtv screensaver off` turns it off.
+
 ## Google Home
 
 The **Google Home** button opens the TV's Home panel when `./gtv.sh google-home` finds one. Otherwise it starts **Google Assistant**, so you can say *"turn off the living room lights"*.
@@ -85,6 +97,8 @@ gradle assembleRelease      # → app/build/outputs/apk/release/app-release.apk
 ```
 
 ## Credits
+
+- Feature ideas (Inputs menu, Move/Hide, StandBy clock) from [Glass TV](https://github.com/aqmangge/glass-tv-home), built on [CleanYourTV](https://github.com/Gathin23/cleanyourtv) (MIT). No code was copied; Glass Launcher is written from scratch.
 
 - Official Malaysian prayer times: [JAKIM e-Solat](https://www.e-solat.gov.my/)
 - GPS → JAKIM zone lookup: [waktusolat.app](https://api.waktusolat.app/)

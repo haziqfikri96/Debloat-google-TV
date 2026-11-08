@@ -18,6 +18,9 @@ import android.graphics.Outline;
 import android.graphics.Typeface;
 import android.graphics.drawable.Drawable;
 import android.graphics.drawable.GradientDrawable;
+import android.media.tv.TvContract;
+import android.media.tv.TvInputInfo;
+import android.media.tv.TvInputManager;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
@@ -43,6 +46,9 @@ import android.widget.TextView;
 import android.widget.Toast;
 
 import java.io.File;
+import android.animation.ObjectAnimator;
+import android.animation.ValueAnimator;
+
 import java.util.ArrayList;
 import java.util.Calendar;
 import java.util.Collections;
@@ -89,6 +95,15 @@ public class HomeActivity extends Activity {
     private GridView grid;
     private Adapter adapter;
     private GlassFrame selectedTile;
+
+    // glass pop-up menu (drawn inside this window so the glass lines up)
+    private FrameLayout menuLayer;
+    private View focusBeforeMenu;
+    private GlassFrame inputsPill;
+
+    // "Move" mode: the selected app follows the D-pad until OK / Back
+    private boolean moving;
+    private ObjectAnimator wiggle;
 
     // prayer card
     private TextView nextLabel, nextTime, nextIn, prayerSource;
@@ -187,7 +202,9 @@ public class HomeActivity extends Activity {
 
     @Override
     public void onBackPressed() {
-        // We are the home screen: there is nothing to go back to.
+        // We are the home screen: Back only closes our own menus.
+        if (menuLayer != null) closeMenu();
+        else if (moving) stopMoving();
     }
 
     private void register(BroadcastReceiver r, IntentFilter f) {
@@ -280,6 +297,11 @@ public class HomeActivity extends Activity {
         title.setLetterSpacing(0.08f);
         title.setPadding(dp(6), 0, 0, 0);
         bar.addView(title, new LinearLayout.LayoutParams(0, -2, 1f));
+
+        inputsPill = pill("Inputs");
+        inputsPill.setOnClickListener(v -> showInputs());
+        inputsPill.setVisibility(passthroughInputs().isEmpty() ? View.GONE : View.VISIBLE);
+        bar.addView(inputsPill, pillParams());
 
         GlassFrame home = pill("Google Home");
         home.setOnClickListener(v -> openGoogleHome());
@@ -613,20 +635,39 @@ public class HomeActivity extends Activity {
             collect(pm, Intent.CATEGORY_LAUNCHER, byPkg); // phone apps without a TV entry
             byPkg.remove(getPackageName());
             List<App> list = new ArrayList<>(byPkg.values());
+            // Apps hidden from Home (long-press > Hide).
+            List<App> visible = new ArrayList<>();
+            for (App a : list) {
+                if (!prefs.getBoolean("hide:" + a.component.getPackageName(), false)) visible.add(a);
+            }
+            list = visible;
             for (App a : list) a.launches = prefs.getInt("n:" + a.component.getPackageName(), 0);
-            // Most used first, then alphabetical.
-            Collections.sort(list, (x, y) -> x.launches != y.launches
-                    ? y.launches - x.launches : x.label.compareToIgnoreCase(y.label));
+            // Your own arrangement (long-press > Move) first; new apps after, most used first.
+            final List<String> order = savedOrder();
+            Collections.sort(list, (x, y) -> {
+                int ix = order.indexOf(x.component.getPackageName());
+                int iy = order.indexOf(y.component.getPackageName());
+                if (ix >= 0 || iy >= 0) {
+                    if (ix < 0) return 1;
+                    if (iy < 0) return -1;
+                    return ix - iy;
+                }
+                return x.launches != y.launches ? y.launches - x.launches : x.label.compareToIgnoreCase(y.label);
+            });
             if (!prefs.getBoolean("suggestOff", false)) {
                 for (String[] s : SUGGESTED) {
                     if (byPkg.containsKey(s[0]) || prefs.getBoolean("hide:" + s[0], false)) continue;
                     list.add(suggestion(pm, s));
                 }
             }
+            final List<App> result = list;
             ui.post(() -> {
                 apps.clear();
-                apps.addAll(list);
+                apps.addAll(result);
                 adapter.notifyDataSetChanged();
+                if (inputsPill != null) {
+                    inputsPill.setVisibility(passthroughInputs().isEmpty() ? View.GONE : View.VISIBLE);
+                }
             });
         });
     }
@@ -683,16 +724,235 @@ public class HomeActivity extends Activity {
                 .addCategory(Intent.CATEGORY_LAUNCHER));
     }
 
-    /** Long-press / MENU: App info for installed apps; hide for suggestions. */
+    /** Long-press OK / MENU on an app: a glass menu of what you can do with it. */
     private void options(App a) {
-        String pkg = a.component.getPackageName();
+        final String pkg = a.component.getPackageName();
+        List<String> labels = new ArrayList<>();
+        List<Runnable> actions = new ArrayList<>();
         if (a.suggested) {
-            prefs.edit().putBoolean("hide:" + pkg, true).apply();
-            Toast.makeText(this, a.label + " hidden", Toast.LENGTH_SHORT).show();
-            loadApps();
+            labels.add("Get on Play Store");
+            actions.add(() -> open(a));
+            labels.add("Hide this suggestion");
+            actions.add(() -> hide(a));
+        } else {
+            labels.add("Open");
+            actions.add(() -> open(a));
+            labels.add("Move");
+            actions.add(this::startMoving);
+            labels.add("Hide from Home");
+            actions.add(() -> hide(a));
+            labels.add("App info");
+            actions.add(() -> launch(new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                    Uri.parse("package:" + pkg))));
+        }
+        int hidden = hiddenCount();
+        if (hidden > 0) {
+            labels.add("Show hidden apps (" + hidden + ")");
+            actions.add(this::unhideAll);
+        }
+        showMenu(a.label, null, labels, actions);
+    }
+
+    private void hide(App a) {
+        prefs.edit().putBoolean("hide:" + a.component.getPackageName(), true).apply();
+        Toast.makeText(this, a.label + " hidden. Long-press any app to show it again.", Toast.LENGTH_LONG).show();
+        loadApps();
+    }
+
+    private int hiddenCount() {
+        int n = 0;
+        for (Map.Entry<String, ?> e : prefs.getAll().entrySet()) {
+            if (e.getKey().startsWith("hide:") && Boolean.TRUE.equals(e.getValue())) n++;
+        }
+        return n;
+    }
+
+    private void unhideAll() {
+        SharedPreferences.Editor ed = prefs.edit();
+        for (String k : prefs.getAll().keySet()) if (k.startsWith("hide:")) ed.remove(k);
+        ed.apply();
+        loadApps();
+    }
+
+    // ------------------------------------------------------------- move mode --
+
+    private List<String> savedOrder() {
+        String s = prefs.getString("order", "");
+        List<String> out = new ArrayList<>();
+        for (String p : s.split(",")) if (!p.isEmpty()) out.add(p);
+        return out;
+    }
+
+    private void saveOrder() {
+        StringBuilder sb = new StringBuilder();
+        for (App a : apps) {
+            if (a.suggested) continue;
+            if (sb.length() > 0) sb.append(',');
+            sb.append(a.component.getPackageName());
+        }
+        prefs.edit().putString("order", sb.toString()).apply();
+    }
+
+    private int installedCount() {
+        int n = 0;
+        for (App a : apps) if (!a.suggested) n++;
+        return n;
+    }
+
+    private void startMoving() {
+        int pos = grid.getSelectedItemPosition();
+        if (pos < 0 || apps.get(pos).suggested) return;
+        moving = true;
+        grid.requestFocus();
+        Toast.makeText(this, "Use the arrows to move it, then press OK", Toast.LENGTH_LONG).show();
+        startWiggle();
+    }
+
+    private void stopMoving() {
+        moving = false;
+        if (wiggle != null) wiggle.cancel();
+        View v = grid.getSelectedView();
+        if (v != null) v.setRotation(0);
+        saveOrder();
+    }
+
+    private void startWiggle() {
+        if (wiggle != null) wiggle.cancel();
+        for (int i = 0; i < grid.getChildCount(); i++) grid.getChildAt(i).setRotation(0);
+        View v = grid.getSelectedView();
+        if (v == null) return;
+        wiggle = ObjectAnimator.ofFloat(v, View.ROTATION, -1.6f, 1.6f);
+        wiggle.setDuration(130);
+        wiggle.setRepeatCount(ValueAnimator.INFINITE);
+        wiggle.setRepeatMode(ValueAnimator.REVERSE);
+        wiggle.start();
+    }
+
+    /** Arrows carry the app; OK or Back puts it down. */
+    @Override
+    public boolean dispatchKeyEvent(KeyEvent e) {
+        if (!moving || e.getAction() != KeyEvent.ACTION_DOWN) return super.dispatchKeyEvent(e);
+        int pos = grid.getSelectedItemPosition();
+        int target = pos;
+        switch (e.getKeyCode()) {
+            case KeyEvent.KEYCODE_DPAD_LEFT: target = pos - 1; break;
+            case KeyEvent.KEYCODE_DPAD_RIGHT: target = pos + 1; break;
+            case KeyEvent.KEYCODE_DPAD_UP: target = pos - COLUMNS; break;
+            case KeyEvent.KEYCODE_DPAD_DOWN: target = pos + COLUMNS; break;
+            case KeyEvent.KEYCODE_DPAD_CENTER:
+            case KeyEvent.KEYCODE_ENTER:
+            case KeyEvent.KEYCODE_BACK:
+                stopMoving();
+                return true;
+            default:
+                return true; // ignore other keys while moving
+        }
+        if (target >= 0 && target < installedCount() && target != pos) {
+            App a = apps.remove(pos);
+            apps.add(target, a);
+            adapter.notifyDataSetChanged();
+            grid.setSelection(target);
+            ui.post(this::startWiggle);
+        }
+        return true;
+    }
+
+    // ---------------------------------------------------------------- inputs --
+
+    /** HDMI / AV inputs the TV exposes (empty on sticks and boxes). */
+    private List<TvInputInfo> passthroughInputs() {
+        List<TvInputInfo> out = new ArrayList<>();
+        if (Build.VERSION.SDK_INT < 21) return out;
+        try {
+            TvInputManager tim = (TvInputManager) getSystemService(Context.TV_INPUT_SERVICE);
+            if (tim == null) return out;
+            for (TvInputInfo info : tim.getTvInputList()) {
+                if (info.isPassthroughInput() && !info.isHidden(this)) out.add(info);
+            }
+        } catch (RuntimeException ignored) {
+            // No TV input framework on this device.
+        }
+        return out;
+    }
+
+    private void showInputs() {
+        final List<TvInputInfo> inputs = passthroughInputs();
+        List<String> labels = new ArrayList<>();
+        List<Runnable> actions = new ArrayList<>();
+        for (final TvInputInfo info : inputs) {
+            CharSequence custom = Build.VERSION.SDK_INT >= 24 ? info.loadCustomLabel(this) : null;
+            CharSequence label = custom != null && custom.length() > 0 ? custom : info.loadLabel(this);
+            labels.add(label == null ? info.getId() : label.toString());
+            actions.add(() -> {
+                Intent i = new Intent(Intent.ACTION_VIEW, TvContract.buildChannelUriForPassthroughInput(info.getId()));
+                if (!tryStart(i)) {
+                    Toast.makeText(this, "No app on this TV can show inputs. If you removed the TV's Live TV app, "
+                            + "bring it back from your phone with: gtv bring-back", Toast.LENGTH_LONG).show();
+                }
+            });
+        }
+        if (labels.isEmpty()) {
+            Toast.makeText(this, "This device has no HDMI inputs", Toast.LENGTH_SHORT).show();
             return;
         }
-        launch(new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:" + pkg)));
+        showMenu("Inputs", null, labels, actions);
+    }
+
+    // ------------------------------------------------------------- glass menu --
+
+    /** A frosted-glass list of choices over a dimmed Home; Back closes it. */
+    private void showMenu(String title, String subtitle, List<String> labels, List<Runnable> actions) {
+        closeMenu();
+        focusBeforeMenu = getCurrentFocus();
+        menuLayer = new FrameLayout(this);
+        menuLayer.setBackgroundColor(0x80000000);
+        menuLayer.setClickable(true);
+
+        GlassFrame panel = new GlassFrame(this, 26, 1f);
+        LinearLayout col = new LinearLayout(this);
+        col.setOrientation(LinearLayout.VERTICAL);
+        col.setPadding(dp(22), dp(18), dp(22), dp(18));
+        col.setClipChildren(false);
+        col.setClipToPadding(false);
+        panel.setClipChildren(false);
+        TextView t = text(20, 255, true);
+        t.setText(title);
+        t.setPadding(dp(6), 0, 0, dp(subtitle == null ? 12 : 4));
+        oneLine(t);
+        col.addView(t);
+        if (subtitle != null) {
+            TextView st = text(13, 190, false);
+            st.setText(subtitle);
+            st.setPadding(dp(6), 0, 0, dp(12));
+            col.addView(st);
+        }
+        GlassFrame first = null;
+        for (int i = 0; i < labels.size(); i++) {
+            final Runnable action = actions.get(i);
+            GlassFrame item = pill(labels.get(i));
+            item.setOnClickListener(v -> {
+                closeMenu();
+                action.run();
+            });
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, -2);
+            lp.topMargin = dp(8);
+            col.addView(item, lp);
+            if (first == null) first = item;
+        }
+        panel.addView(col, new FrameLayout.LayoutParams(-1, -2));
+        FrameLayout.LayoutParams plp = new FrameLayout.LayoutParams(dp(360), -2, Gravity.CENTER);
+        menuLayer.addView(panel, plp);
+        root.addView(menuLayer, new FrameLayout.LayoutParams(-1, -1));
+        if (first != null) first.requestFocus();
+    }
+
+    private void closeMenu() {
+        if (menuLayer == null) return;
+        root.removeView(menuLayer);
+        menuLayer = null;
+        if (focusBeforeMenu != null && focusBeforeMenu.isAttachedToWindow()) focusBeforeMenu.requestFocus();
+        else grid.requestFocus();
+        focusBeforeMenu = null;
     }
 
     private void launch(Intent i) {
@@ -705,6 +965,10 @@ public class HomeActivity extends Activity {
 
     @Override
     public boolean onKeyDown(int keyCode, KeyEvent e) {
+        if (keyCode == KeyEvent.KEYCODE_MENU && menuLayer != null) {
+            closeMenu();
+            return true;
+        }
         if (keyCode == KeyEvent.KEYCODE_MENU && grid.hasFocus() && grid.getSelectedItemPosition() >= 0) {
             options(apps.get(grid.getSelectedItemPosition()));
             return true;

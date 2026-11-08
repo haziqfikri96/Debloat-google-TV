@@ -8,6 +8,8 @@ Everything runs over ADB from your computer. You don't need root, and **every ch
 - Before the first change, the script saves a backup of your packages, settings and home app.
 - `./gtv.sh restore` puts the TV back the way it was.
 
+> **Have an AI coding assistant?** Paste one line and let it do everything. See [PROMPT.md](PROMPT.md).
+
 ## Install from your phone (no computer needed)
 
 You can do everything from an **Android phone** on the same Wi-Fi as the TV.
@@ -120,6 +122,10 @@ cd Debloat-google-TV
 | `prayer <gps\|city\|lat,lng>` | Sets the prayer times location. Uses JAKIM's official times in Malaysia, calculated elsewhere, and checks the TV's clock and time zone |
 | `google-home` | Sets up the Google Home button and restores Assistant/casting if they were debloated |
 | `suggestions on\|off\|reset` | Icons for popular apps you haven't installed (installed only when you select them) |
+| `apps` | Numbered list of the apps on your home screen. Type the numbers to remove (menu **u**) |
+| `bring-back [pkg]` | Numbered list of apps `gtv` removed. Pick the ones to bring back (menu **b**) |
+| `recheck` | Removes again any app that came back after a reboot or update (`status` shows them) |
+| `screensaver on\|off` | Glass StandBy clock: a big clock, Hijri date and next prayer, burn-in safe |
 | `launcher <apk\|package>` | Uses any other launcher instead |
 | `launcher-reset` | Brings back the stock Google TV / Android TV home screen |
 | `restore [backup]` | Undoes everything. By default it restores `original`, the state before your first run |
@@ -184,6 +190,10 @@ Either way, the script sets the new launcher as the home activity and **disables
 
 > On some Chromecast / Google TV firmware, the HOME button is hard-wired to the stock launcher. If HOME still opens Google TV, use a launcher with an "override home button" accessibility option (Projectivy has one).
 
+### Xiaomi TVs: Netflix / Prime Video come back after a reboot?
+
+A hidden system app, `com.mstar.netflixobserver`, re-installs them at every boot, and it also runs the remote's Netflix button. `gtv status` shows apps that came back, and `gtv recheck` removes them again. To stop it for good, uncomment that line in [`lists/xiaomi.txt`](lists/xiaomi.txt) and run `gtv debloat xiaomi`.
+
 ## Undo / troubleshooting
 
 - **Undo everything:** `./gtv.sh restore` then `./gtv.sh reboot`.
@@ -192,6 +202,11 @@ Either way, the script sets the new launcher as the home activity and **disables
 - **Worst case:** a factory reset restores every app, because nothing is deleted from the system partition.
 
 Backups are stored in `backups/` (git-ignored). `original` always points to the state before your first change, and `latest` points to the newest snapshot.
+
+## Credits
+
+- Device knowledge (Xiaomi's Netflix observer, extra Xiaomi/Google tracking packages, which apps handle HDMI) is partly from the device lists of [CleanYourTV](https://github.com/Gathin23/cleanyourtv) (MIT) and [Glass TV](https://github.com/aqmangge/glass-tv-home).
+- Official Malaysian prayer times come from [JAKIM e-Solat](https://www.e-solat.gov.my/).
 
 ## Disclaimer
 

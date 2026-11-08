@@ -3,3 +3,4 @@ backups/
 .cache/
 .glass-pending
 .a11y-before
+.removed
