@@ -185,13 +185,14 @@ debloat() {
   local f path
   for f in $files; do
     path="$f"; [[ -f "$path" ]] || path="$LISTS/$f.txt"
-    mapfile -t -O "${#targets[@]}" targets < <(read_list "$path")
+    mapfile -t -O "${#targets[@]}" targets <<<"$(read_list "$path")"
   done
 
   local installed; installed="$(installed_packages)"
   local -a todo=()
   local p
   for p in "${targets[@]}"; do
+    [[ -z "$p" ]] && continue
     if is_protected "$p"; then warn "Skipping protected package $p"; continue; fi
     grep -qxF "$p" <<<"$installed" && todo+=("$p")
   done
@@ -483,9 +484,11 @@ google_home() {
 
   info "Looking for the Google TV Home panel"
   local -a panels=()
-  mapfile -t panels < <(q_ dumpsys package 2>/dev/null \
+  local dump; dump="$(q_ dumpsys package 2>/dev/null || true)"
+  mapfile -t panels <<<"$(printf '%s\n' "$dump" \
     | grep -oE '[a-z][a-z0-9_.]*/[A-Za-z0-9_.$]*(HomePanel|SmartHome|HomeControl|Dashboard)[A-Za-z0-9_.$]*' \
-    | grep -E '^com\.google\.' | sort -u)
+    | grep -E '^com\.google\.' | sort -u || true)"
+  [[ -z "${panels[0]:-}" ]] && panels=()
   local pick=""
   if (( ${#panels[@]} == 1 )); then
     pick="${panels[0]}"
@@ -545,7 +548,10 @@ launcher() {
     # (aapt usually isn't installed on a phone).
     pkg="$(aapt dump badging "$target" 2>/dev/null | sed -n "s/^package: name='\([^']*\)'.*/\1/p" || true)"
     if [[ -z "$pkg" ]] && (( ! DRY_RUN )); then
-      pkg="$(comm -13 <(echo "$before") <(installed_packages) | head -n1)"
+      local p
+      for p in $(installed_packages); do
+        grep -qxF "$p" <<<"$before" || { pkg="$p"; break; }
+      done
     fi
     if [[ -z "$pkg" ]]; then
       if (( DRY_RUN )); then pkg="<launcher>"
@@ -649,7 +655,7 @@ status() {
   for f in safe recommended aggressive; do
     while read -r p; do
       grep -qxF "$p" <<<"$installed" && { printf '    [%s] %s\n' "$f" "$p"; any=1; }
-    done < <(read_list "$LISTS/$f.txt")
+    done <<<"$(read_list "$LISTS/$f.txt")"
   done
   (( any )) || ok "none"
   info "Top memory users"
@@ -705,7 +711,8 @@ menu() {
          ( debloat "$p" ) || true ;;
       5) read -r -p "Animation speed: 0 = off, 0.5 = fast (default), 1 = normal: " p
          ( tweaks "${p:-0.5}" ) || true ;;
-      6) mapfile -t apks < <(downloaded_apks)
+      6) mapfile -t apks <<<"$(downloaded_apks)"
+         [[ -z "${apks[0]:-}" ]] && apks=()
          if (( ${#apks[@]} )); then
            echo "APKs in Downloads:"
            for i in "${!apks[@]}"; do printf '  %d) %s\n' $((i + 1)) "$(basename "${apks[$i]}")"; done
