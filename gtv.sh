@@ -10,7 +10,19 @@
 
 set -euo pipefail
 
-ROOT="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
+if (( BASH_VERSINFO[0] < 4 )); then
+  echo "gtv.sh needs bash 4 or newer (you have $BASH_VERSION)." >&2
+  echo "On a Mac: brew install bash   then run:  $(command -v brew >/dev/null && echo "\$(brew --prefix)/bin/bash" || echo bash) ./gtv.sh" >&2
+  exit 1
+fi
+
+# Folder of this script, following the `gtv` symlink (readlink -f is missing on older macOS).
+SELF="${BASH_SOURCE[0]}"
+while [[ -L "$SELF" ]]; do
+  target="$(readlink "$SELF")"
+  [[ "$target" == /* ]] && SELF="$target" || SELF="$(dirname "$SELF")/$target"
+done
+ROOT="$(cd "$(dirname "$SELF")" && pwd)"
 LISTS="$ROOT/lists"
 BACKUPS="$ROOT/backups"
 GLASS_PKG="io.github.debloatgtv.glass"

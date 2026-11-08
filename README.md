@@ -82,7 +82,7 @@ cd Debloat-google-TV
 ./gtv.sh -s 192.168.1.50 reboot
 ```
 
-> Windows: run it from **Git Bash** or **WSL**.
+> **Windows:** run it from **Git Bash** or **WSL**. **Mac:** macOS ships an old bash, so first run `brew install bash`, then use `$(brew --prefix)/bin/bash ./gtv.sh`.
 
 ## Commands
 
