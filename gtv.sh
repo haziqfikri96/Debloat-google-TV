@@ -32,6 +32,8 @@ DRY_RUN=0
 SERIAL="${ANDROID_SERIAL:-}"
 IS_TERMUX=0
 [[ -n "${TERMUX_VERSION:-}" || -d /data/data/com.termux/files/usr ]] && IS_TERMUX=1
+IS_ISH=0
+[[ -e /proc/ish ]] && IS_ISH=1   # iSH on iPhone/iPad
 
 # ---------------------------------------------------------------- output ----
 if [[ -t 1 ]]; then
@@ -68,6 +70,7 @@ q_() { adb_ shell "$@" | tr -d '\r'; }
 require_adb() {
   command -v adb >/dev/null && return
   if (( IS_TERMUX )); then die "adb not found. Run: pkg install android-tools   (or ./setup-phone.sh)"; fi
+  if (( IS_ISH )); then die "adb not found. Run: apk add android-tools   (or sh setup-ios.sh)"; fi
   die "adb not found. Install Android platform-tools: https://developer.android.com/tools/releases/platform-tools"
 }
 
@@ -81,7 +84,7 @@ connect_tv() {
   local out; out="$(adb connect "$addr" 2>&1 || true)"
   if [[ "$out" != *"connected to"* ]]; then
     die "Could not connect: $out
-       - Phone and TV must be on the same Wi-Fi.
+       - Phone and TV must be on the same Wi-Fi.$( (( IS_ISH )) && printf '\n       - iPhone/iPad: allow iSH under Settings > Privacy & Security > Local Network.')
        - Older TVs: Developer options > Network debugging (port 5555).
        - Google TV 12+: Developer options > Wireless debugging. Pair first
          (./gtv.sh pair <IP:PAIR-PORT> <CODE>), then connect to the IP:PORT shown there."
@@ -265,7 +268,7 @@ home_activity_of() {
 find_apk() {
   local f="$1" d
   [[ -f "$f" ]] && { echo "$f"; return; }
-  for d in "$HOME/storage/downloads" /sdcard/Download /storage/emulated/0/Download "$HOME/Downloads"; do
+  for d in "$HOME/storage/downloads" /sdcard/Download /storage/emulated/0/Download "$HOME/Downloads" /mnt; do
     [[ -f "$d/$(basename "$f")" ]] && { echo "$d/$(basename "$f")"; return; }
   done
   return 1
@@ -273,7 +276,7 @@ find_apk() {
 
 downloaded_apks() {
   local d
-  for d in "$HOME/storage/downloads" /sdcard/Download "$HOME/Downloads"; do
+  for d in "$HOME/storage/downloads" /sdcard/Download "$HOME/Downloads" /mnt; do
     [[ -d "$d" ]] && find "$d" -maxdepth 1 -name '*.apk' 2>/dev/null
   done | sort -u
 }
@@ -396,6 +399,7 @@ prayer() {
 
   local lat="" lng="" tz=""
   if [[ "$where" == gps ]]; then
+    (( IS_ISH )) && die "iSH can't read the iPhone's GPS. Type your town instead, e.g.: gtv prayer \"Shah Alam\""
     command -v termux-location >/dev/null \
       || die "GPS needs Termux:API: install the Termux:API app, then run: pkg install termux-api"
     info "Getting your phone's location (allow Location for Termux:API)"
@@ -517,7 +521,7 @@ suggestions() {
 find_file() {
   local f="$1" d
   [[ -f "$f" ]] && { echo "$f"; return; }
-  for d in "$HOME/storage/downloads" "$HOME/storage/pictures" /sdcard/Download /sdcard/Pictures \
+  for d in "$HOME/storage/downloads" "$HOME/storage/pictures" /sdcard/Download /sdcard/Pictures /mnt \
            "$HOME/Downloads" "$HOME/Pictures"; do
     [[ -f "$d/$(basename "$f")" ]] && { echo "$d/$(basename "$f")"; return; }
   done

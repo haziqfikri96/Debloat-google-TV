@@ -66,6 +66,27 @@ The TV address is remembered, so the next time you open `gtv`, you can go straig
 >
 > **iPhone:** iOS can't run `adb`, so use a computer (below) instead.
 
+## Install from an iPhone or iPad
+
+iOS can't run Android, but the free **iSH Shell** app runs a small Linux on your iPhone/iPad. That Linux has Android's `adb` tool, which is all this toolkit needs. Nothing is installed on iOS itself.
+
+1. **On the TV:** turn on debugging, as in step 1 above.
+2. **On the iPhone/iPad:** install **[iSH Shell](https://apps.apple.com/app/ish-shell/id1436902243)** from the App Store, open it and paste:
+
+   ```sh
+   apk add git && git clone https://github.com/haziqfikri96/Debloat-google-TV.git
+   cd Debloat-google-TV && sh setup-ios.sh
+   ```
+
+3. Type `gtv` and use the same menu as on Android (**1** connect / **2** pair, **3** make it fast, **g** Glass home screen, **p** prayer times, **h** Google Home).
+
+Tips for iSH:
+- **Allow Local Network:** when iOS asks whether iSH may find devices on your network, tap **Allow**. You can also turn it on later in Settings → Privacy & Security → Local Network → iSH. Without it, `gtv` can't reach the TV.
+- **Keep iSH on screen.** iOS pauses background apps, so stay in iSH during "Make it fast", especially the app pre-compiling step.
+- **Prayer location:** iSH can't read the iPhone's GPS, so type your town (e.g. `Shah Alam`) instead of `gps`.
+- **Photos and APK files:** to use a wallpaper photo or APK from the Files app, run `mount -t ios . /mnt` in iSH and pick the folder (e.g. Downloads). `gtv` then finds files there by name.
+- **Speed:** iSH emulates a PC processor, so commands run slower than on Android or a laptop, but every step works the same.
+
 ## Quick start (computer)
 
 1. **On the TV:** Settings → System → About → click **Build** 7 times. Then Settings → System → Developer options → turn on **USB debugging** (on Google TV this also turns on network debugging).
