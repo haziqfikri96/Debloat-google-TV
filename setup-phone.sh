@@ -12,9 +12,12 @@ if [[ -z "${TERMUX_VERSION:-}" && ! -d /data/data/com.termux/files/usr ]]; then
   exit 1
 fi
 
-echo "==> Installing adb (android-tools) and git"
+echo "==> Installing adb (android-tools), git and curl"
 pkg update -y
-pkg install -y android-tools git
+pkg install -y android-tools git curl
+# Optional: lets `gtv` use this phone's GPS for prayer times (also install the
+# Termux:API app from the same place you got Termux).
+pkg install -y termux-api || true
 
 echo "==> Granting Termux access to your Downloads folder (tap Allow)"
 [[ -d "$HOME/storage/downloads" ]] || termux-setup-storage || true

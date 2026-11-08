@@ -1,41 +1,68 @@
 # Glass Launcher
 
-A minimal, fast home screen for Android TV / Google TV with a **frosted-glass** look:
-translucent cards, soft blur and bright glass edges over a colourful background.
+A minimal, fast home screen for Android TV / Google TV with a **frosted-glass** look. It shows translucent cards, soft blur and bright glass edges over a colourful background. It also has accurate **prayer times**, a **Google Home** button, and icons for popular apps that **install only when you ask**.
 
 ![Aurora](../docs/glass-aurora.jpg)
 
-| Ocean | Sunset | Your photo |
+| Sunset (Malaysia, JAKIM) | Graphite (London, MWL) | Your own photo |
 |---|---|---|
-| ![Ocean](../docs/glass-ocean.jpg) | ![Sunset](../docs/glass-sunset.jpg) | ![Photo](../docs/glass-photo.jpg) |
+| ![Sunset](../docs/glass-sunset.jpg) | ![Graphite](../docs/glass-graphite.jpg) | ![Photo](../docs/glass-photo.jpg) |
+
+## Prayer times
+
+The prayer card shows today's six times, the next prayer with a countdown, the Hijri date, and where the times come from. When a prayer starts, the card shows *"It's time for …"* (*Waktu sekarang*) for 15 minutes.
+
+| Where you are | Source of the times | How accurate |
+|---|---|---|
+| **Malaysia** | The **official JAKIM e-Solat timetable** for your zone. The zone is found from your location, the timetable is downloaded once a year and cached on the TV. | Identical to JAKIM / mosque times |
+| Malaysia, offline | Calculation with JAKIM's method (Subuh 18°, Isyak 18°, ihtiyat fitted to the 2026 timetable) | Within 1 min of JAKIM on 96–100% of days in most zones |
+| Everywhere else | Offline astronomical calculation with the local authority's method, chosen from the TV's time zone: MUIS, Kemenag, Umm al-Qura, Diyanet, ISNA, Egypt, Karachi, Tehran, Gulf, MWL… | Within 0.5 min of NOAA's solar calculations |
+
+Malay names (Subuh, Syuruk, Zohor, Asar, Maghrib, Isyak) are used for Malaysia or a Malay/Indonesian TV language. Elsewhere it shows Fajr, Sunrise, Dhuhr, Asr, Maghrib, Isha.
+
+**Set your location** from your phone with the `gtv` menu → **p**, or:
+
+```bash
+./gtv.sh prayer gps                       # this phone's GPS (needs the Termux:API app)
+./gtv.sh prayer "Shah Alam"               # a town or city
+./gtv.sh prayer 3.0738,101.5183           # exact coordinates
+# options: --zone SGR01  --method muis  --asr hanafi  --lang en  --adjust fajr=+1,isha=-1
+```
+
+It also checks that the TV's clock and time zone are correct, because a wrong TV clock is the usual reason prayer times look "off".
+
+## Apps
+
+- Installed TV apps show their banners. Phone apps show an icon and name. The most used apps come first.
+- **Popular apps you don't have** (YouTube, Netflix, Prime Video, Disney+, Spotify, YouTube Music, Plex, VLC) show as dimmed tiles with a **Get** badge. **Nothing is installed until you select one**, which opens its Play Store page. Apps you removed with debloat show their real icon.
+- Long-press OK (or press MENU) on an app to open **App info**. On a suggestion, it **hides** the tile.
+- `./gtv.sh suggestions off|on|reset` turns suggestions off or on, or brings back hidden ones.
+
+## Google Home
+
+The **Google Home** button opens the TV's Home panel when `./gtv.sh google-home` finds one. Otherwise it starts **Google Assistant**, so you can say *"turn off the living room lights"*.
+
+`./gtv.sh google-home` also restores Assistant and Chromecast built-in if an aggressive debloat removed them.
+
+You can also control your devices with the remote's mic button, or by long-pressing HOME on Google TV 12+. Long-press HOME opens Google TV's own Home panel, which is why `./gtv.sh glass` keeps the stock launcher enabled by default.
 
 ## Why it's smooth
 
 - **The glass costs almost nothing per frame.** Real-time blur is heavy on TV chips. Instead, the background is blurred **once** into a tiny 160×90 bitmap. Each glass card draws the part of that bitmap that sits behind it: one GPU-scaled bitmap shader, a tint, a highlight and a rim.
-- **No libraries.** The launcher uses only the Android framework (no AndroidX, Compose or Kotlin runtime). The APK is tiny and starts instantly.
-- **No background work.** There are no ads, no recommendation rows and no autoplaying trailers. It has no network permission at all.
+- **No libraries.** The launcher uses only the Android framework (no AndroidX, Compose or Kotlin runtime). The APK is about 20 KB and starts instantly.
+- **No background work.** There are no ads, recommendation rows or trailers. The network is used for one thing: the yearly JAKIM timetable (Malaysia only).
 - **Focus animations are short (140 ms).** They only animate scale and alpha, which the GPU handles.
-
-## Features
-
-- All TV apps (their banners) and phone apps (icon and name), with the most used first
-- Clock and date on a glass card
-- **Style** button: Aurora, Ocean, Sunset, Graphite, or **Photo** (your own wallpaper)
-- **Settings** button
-- Long-press OK, or press MENU, on an app to open its App info (uninstall, clear cache, etc.)
-- Press HOME while on the home screen to jump back to the first app
 
 ## Install
 
 From the repo root, on a phone (Termux) or a PC:
 
 ```bash
-./gtv.sh glass                      # downloads, installs and sets it as home
+./gtv.sh glass                      # install and set as home (keeps stock launcher for the Home panel)
+./gtv.sh glass --replace            # also disable the stock launcher, if HOME ignores Glass
 ./gtv.sh wallpaper my-photo.jpg     # optional: frost your own photo
 ./gtv.sh launcher-reset             # go back to the stock home screen
 ```
-
-Or use the `gtv` menu: **g** sets up the Glass home screen, and **w** sets a wallpaper.
 
 ## Build it yourself
 
@@ -48,4 +75,8 @@ cd glass-launcher
 gradle assembleRelease      # → app/build/outputs/apk/release/app-release.apk
 ```
 
-`./gtv.sh glass` uses a local build automatically if one exists.
+## Credits
+
+- Official Malaysian prayer times: [JAKIM e-Solat](https://www.e-solat.gov.my/)
+- GPS → JAKIM zone lookup: [waktusolat.app](https://api.waktusolat.app/)
+- Calculation: the [PrayTimes.org](http://praytimes.org/) algorithm

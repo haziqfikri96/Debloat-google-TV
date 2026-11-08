@@ -27,4 +27,7 @@ android {
         targetCompatibility JavaVersion.VERSION_1_8
     }
 }
-// No dependencies on purpose: framework-only keeps the APK tiny and startup instant.
+// No runtime dependencies on purpose: framework-only keeps the APK tiny and startup instant.
+dependencies {
+    testImplementation "junit:junit:4.13.2"
+}

@@ -26,8 +26,8 @@ jobs:
         with:
           gradle-version: "8.10.2"
 
-      - name: Build release APK
-        run: gradle -p glass-launcher assembleRelease --no-daemon
+      - name: Test and build release APK
+        run: gradle -p glass-launcher testReleaseUnitTest assembleRelease --no-daemon
 
       - name: Collect APK
         run: cp glass-launcher/app/build/outputs/apk/release/app-release.apk glass-launcher.apk

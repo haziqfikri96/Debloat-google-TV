@@ -307,7 +307,8 @@ glass_apk() {
 glass() {
   require_device
   local apk; apk="$(glass_apk)"
-  launcher "$apk"
+  if [[ "${1:-}" == --replace ]]; then KEEP_STOCK=0 launcher "$apk"; else KEEP_STOCK=1 launcher "$apk"; fi
+  sh_ pm grant "$GLASS_PKG" android.permission.ACCESS_COARSE_LOCATION >/dev/null 2>&1 || true
   # Lets the launcher read a wallpaper pushed with `./gtv.sh wallpaper`.
   sh_ pm grant "$GLASS_PKG" android.permission.READ_MEDIA_IMAGES >/dev/null 2>&1 \
     || sh_ pm grant "$GLASS_PKG" android.permission.READ_EXTERNAL_STORAGE >/dev/null 2>&1 || true
@@ -340,6 +341,165 @@ wallpaper() {
   fi
   sh_ am force-stop "$GLASS_PKG" >/dev/null 2>&1 || true
   sh_ am start -a android.intent.action.MAIN -c android.intent.category.HOME >/dev/null 2>&1 || true
+}
+
+# --------------------------------------------------------------- prayer ----
+# Tiny JSON helpers (no jq on a stock Termux / macOS).
+json_num() { grep -o "\"$1\":[ ]*-\?[0-9.]*" | head -n1 | sed 's/.*:[ ]*//'; }
+json_str() { grep -o "\"$1\":[ ]*\"[^\"]*\"" | head -n1 | sed 's/.*:[ ]*"//; s/"$//'; }
+urlencode() { local s="$1" out="" c i; for ((i = 0; i < ${#s}; i++)); do c="${s:i:1}"
+  case "$c" in [a-zA-Z0-9.~_-]) out+="$c" ;; ' ') out+="%20" ;; *) out+="$(printf '%%%02X' "'$c")" ;; esac; done; echo "$out"; }
+
+# Sends settings to Glass Launcher on the TV (it applies them instantly).
+glass_config() {
+  local args="" k v
+  while (( $# )); do
+    k="$1" v="$2"; shift 2
+    case "$k" in
+      lat|lng) args+=" --ef $k $v" ;;
+      *) args+=" --es $k $(printf '%q' "$v")" ;;
+    esac
+  done
+  sh_ "am start -n $GLASS_PKG/.HomeActivity -a io.github.debloatgtv.glass.CONFIG$args" >/dev/null
+}
+
+prayer() {
+  local where="" method="" asr="" zone="" lang="" adjust="" name=""
+  while (( $# )); do
+    case "$1" in
+      --method) method="$2"; shift 2 ;;
+      --asr) asr="$2"; shift 2 ;;
+      --zone) zone="$2"; shift 2 ;;
+      --lang) lang="$2"; shift 2 ;;
+      --adjust) adjust="$2"; shift 2 ;;
+      --name) name="$2"; shift 2 ;;
+      *) where="${where:+$where }$1"; shift ;;
+    esac
+  done
+  [[ -n "$where$method$asr$zone$lang$adjust" ]] || die 'Usage: ./gtv.sh prayer <gps | "City name" | LAT,LNG> [options]
+       --zone WLY01        JAKIM zone (Malaysia; normally found automatically)
+       --method jakim|muis|kemenag|mwl|isna|egypt|makkah|karachi|turkey|...  (default: auto)
+       --asr shafi|hanafi  --lang ms|en  --adjust fajr=+2,isha=-1  --name "Label"'
+  require_device
+
+  local lat="" lng="" tz=""
+  if [[ "$where" == gps ]]; then
+    command -v termux-location >/dev/null \
+      || die "GPS needs Termux:API: install the Termux:API app, then run: pkg install termux-api"
+    info "Getting your phone's location (allow Location for Termux:API)"
+    local j; j="$(termux-location -p gps -r once 2>/dev/null || termux-location -p network -r once 2>/dev/null || true)"
+    lat="$(json_num latitude <<<"$j")"; lng="$(json_num longitude <<<"$j")"
+    [[ -n "$lat" && -n "$lng" ]] || die "Could not read the phone's location. Is Location turned on?"
+    name="${name:-My location}"
+  elif [[ "$where" =~ ^(-?[0-9]+\.?[0-9]*)[,\ ]+(-?[0-9]+\.?[0-9]*)$ ]]; then
+    lat="${BASH_REMATCH[1]}"; lng="${BASH_REMATCH[2]}"
+  elif [[ -n "$where" ]]; then
+    command -v curl >/dev/null || die "curl not found (Termux: pkg install curl)"
+    info "Looking up \"$where\""
+    local j; j="$(curl -fsS --max-time 20 "https://geocoding-api.open-meteo.com/v1/search?count=1&name=$(urlencode "$where")" || true)"
+    lat="$(json_num latitude <<<"$j")"; lng="$(json_num longitude <<<"$j")"; tz="$(json_str timezone <<<"$j")"
+    [[ -n "$lat" ]] || die "Place not found: $where (try a bigger nearby town, or LAT,LNG)"
+    local found country; found="$(json_str name <<<"$j")"; country="$(json_str country <<<"$j")"
+    name="${name:-$found}"
+    ok "Found $found${country:+, $country} ($lat, $lng)"
+  fi
+
+  # Time zone of the place (to check the TV's), when the lookup didn't give one.
+  if [[ -n "$lat" && -z "$tz" ]] && command -v curl >/dev/null; then
+    tz="$(curl -fsS --max-time 15 "https://api.open-meteo.com/v1/forecast?latitude=$lat&longitude=$lng&timezone=auto" 2>/dev/null \
+      | json_str timezone || true)"
+  fi
+
+  local -a cfg=()
+  [[ -n "$lat" ]] && cfg+=(lat "$lat" lng "$lng" city "${name:-$where}")
+  [[ -n "$method" ]] && cfg+=(method "$method")
+  [[ -n "$asr" ]] && cfg+=(asr "$asr")
+  [[ -n "$zone" ]] && cfg+=(zone "$zone")
+  [[ -n "$lang" ]] && cfg+=(lang "$lang")
+  [[ -n "$adjust" ]] && cfg+=(adjust "$adjust")
+  glass_config "${cfg[@]}"
+  ok "Prayer settings sent to Glass Launcher"
+
+  # Accuracy checks: the TV's clock and time zone must be right for the times to be right.
+  local tv_tz tv_now my_now
+  tv_tz="$(q_ getprop persist.sys.timezone)"
+  if [[ -n "$tz" && -n "$tv_tz" && "$tz" != "$tv_tz" ]]; then
+    warn "TV time zone is $tv_tz but ${name:-this location} is in $tz."
+    warn "Fix it on the TV: Settings > System > Date & time > Time zone (or turn on automatic)."
+  fi
+  if [[ -z "$tz" && -n "$lng" ]]; then
+    # Offline sanity check: solar time zone ~ longitude / 15.
+    local z h; z="$(q_ date +%z 2>/dev/null)"
+    if [[ "$z" =~ ^([+-])([0-9]{2})([0-9]{2})$ ]]; then
+      h=$(( 10#${BASH_REMATCH[2]} * 60 + 10#${BASH_REMATCH[3]} )); [[ "${BASH_REMATCH[1]}" == - ]] && h=$(( -h ))
+      if awk -v h="$h" -v l="$lng" 'BEGIN { d = h / 60 - l / 15; exit !(d > 2.5 || d < -2.5) }'; then
+        warn "TV time zone (UTC$z${tv_tz:+, $tv_tz}) doesn't fit this location."
+        warn "Fix it on the TV: Settings > System > Date & time > Time zone (or turn on automatic)."
+      fi
+    fi
+  fi
+  tv_now="$(q_ date +%s 2>/dev/null || echo 0)"; my_now="$(date +%s)"
+  if [[ "$tv_now" =~ ^[0-9]+$ ]] && (( tv_now > 0 )); then
+    local skew=$(( tv_now > my_now ? tv_now - my_now : my_now - tv_now ))
+    if (( skew > 90 )); then
+      warn "TV clock is $((skew / 60)) min off. Turn on Settings > System > Date & time > Automatic."
+    else
+      ok "TV clock is correct${tv_tz:+ (time zone $tv_tz)}"
+    fi
+  fi
+  ok "Malaysia: official JAKIM zone times are downloaded automatically. Elsewhere: calculated offline."
+}
+
+# ----------------------------------------------------------- google home ----
+google_home() {
+  require_device
+  local all; all="$(installed_packages)"
+  info "Checking what Google Home control needs"
+  local p missing=0
+  for p in com.google.android.katniss com.google.android.apps.mediashell; do
+    if grep -qxF "$p" <<<"$all"; then ok "$p present"
+    else
+      warn "$p was removed (aggressive debloat). Restoring it."
+      if sh_ cmd package install-existing --user 0 "$p" >/dev/null 2>&1; then ok "restored $p"
+      else warn "could not restore $p"; missing=1; fi
+    fi
+  done
+
+  info "Looking for the Google TV Home panel"
+  local -a panels=()
+  mapfile -t panels < <(q_ dumpsys package 2>/dev/null \
+    | grep -oE '[a-z][a-z0-9_.]*/[A-Za-z0-9_.$]*(HomePanel|SmartHome|HomeControl|Dashboard)[A-Za-z0-9_.$]*' \
+    | grep -E '^com\.google\.' | sort -u)
+  local pick=""
+  if (( ${#panels[@]} == 1 )); then
+    pick="${panels[0]}"
+  elif (( ${#panels[@]} > 1 )); then
+    local i; for i in "${!panels[@]}"; do printf '    %d) %s\n' $((i + 1)) "${panels[$i]}"; done
+    read -r -p "Which one opens the Home panel? (number, Enter to skip): " i || true
+    [[ "$i" =~ ^[0-9]+$ ]] && (( i >= 1 && i <= ${#panels[@]} )) && pick="${panels[$((i - 1))]}"
+  fi
+  if [[ -n "$pick" ]]; then
+    glass_config homePanel "$pick"
+    ok "Google Home button opens $pick"
+  else
+    glass_config homePanel ""
+    ok "No separate Home panel app found: the Google Home button starts Google Assistant."
+  fi
+  echo
+  ok "Ways to control your Google Home devices from the TV:"
+  echo "    - Google Home button on the Glass home screen (Assistant: \"turn off the lights\")"
+  echo "    - Press the mic button on the remote and ask Google"
+  echo "    - Long-press HOME for the Home panel (Google TV 12+; needs the stock launcher enabled)"
+  (( missing )) && warn "Some Google parts could not be restored; run ./gtv.sh restore if voice control fails."
+  return 0
+}
+
+suggestions() {
+  local mode="${1:-}"
+  [[ "$mode" =~ ^(on|off|reset)$ ]] || die "Usage: ./gtv.sh suggestions on|off|reset"
+  require_device
+  glass_config suggestions "$mode"
+  ok "Suggested apps: $mode"
 }
 
 find_file() {
@@ -386,6 +546,11 @@ launcher() {
     warn "set-home-activity unsupported; you will be asked to pick a home app after the next step"
   fi
 
+  if [[ "${KEEP_STOCK:-0}" == 1 ]]; then
+    ok "Stock launcher kept enabled (long-press HOME still opens the Google Home panel)."
+    warn "If HOME still opens Google TV, run: ./gtv.sh glass --replace"
+    return 0
+  fi
   info "Disabling the stock launcher(s) so HOME goes to the new one"
   local s installed; installed="$(installed_packages)"
   for s in "${STOCK_LAUNCHERS[@]}"; do
@@ -498,6 +663,8 @@ menu() {
       "5) Speed tweaks only" \
       "g) Glass home screen (frosted-glass launcher)" \
       "w) Glass wallpaper from a photo" \
+      "p) Prayer times location" \
+      "h) Google Home control" \
       "6) Other launcher (APK or package)" \
       "7) Bring back stock home screen" \
       "8) Status" \
@@ -529,6 +696,10 @@ menu() {
          if [[ "$apk" =~ ^[0-9]+$ ]] && (( apk >= 1 && apk <= ${#apks[@]} )); then apk="${apks[$((apk - 1))]}"; fi
          [[ -n "$apk" ]] && { ( launcher "$apk" ) || true; } ;;
       g|G) ( glass ) || true ;;
+      p|P) echo "  Type 'gps' for this phone's location, a city (e.g. Shah Alam), or LAT,LNG"
+           read -r -p "Location: " p
+           [[ -n "$p" ]] && { ( prayer "$p" ) || true; } ;;
+      h|H) ( google_home ) || true ;;
       w|W) read -r -p "Photo file name in Downloads/Pictures (or full path), or 'remove': " p
            [[ "$p" == remove ]] && p=--remove
            [[ -n "$p" ]] && { ( wallpaper "$p" ) || true; } ;;
@@ -561,7 +732,11 @@ Commands
   all [profile]          backup + debloat + tweaks (default profile: recommended)
   debloat [profile]      Remove bloat: safe | recommended | aggressive | custom | <file>
   tweaks [0|0.5|1]       Speed tweaks; arg = animation scale (default 0.5, 0 = off)
-  glass                  Redesign: install the frosted-glass home screen (Glass Launcher)
+  glass [--replace]      Redesign: install the frosted-glass home screen (Glass Launcher)
+                         --replace also disables the stock launcher (if HOME ignores Glass)
+  prayer <gps|city|lat,lng> [opts]  Prayer times location (JAKIM official in Malaysia)
+  google-home            Set up Google Home control (Assistant + Home panel)
+  suggestions on|off|reset  App icons for popular apps you haven't installed
   wallpaper <img|--remove>  Use your own photo behind the glass
   launcher <apk|pkg>     Use any other launcher instead
   launcher-reset         Go back to the stock Google TV / Android TV home screen
@@ -594,7 +769,10 @@ case "$cmd" in
   all)            debloat "${1:-recommended}"; tweaks ;;
   debloat)        debloat "$@" ;;
   tweaks)         tweaks "$@" ;;
-  glass)          glass ;;
+  glass)          glass "$@" ;;
+  prayer)         prayer "$@" ;;
+  google-home)    google_home ;;
+  suggestions)    suggestions "$@" ;;
   wallpaper)      wallpaper "$@" ;;
   launcher)       launcher "$@" ;;
   launcher-reset) launcher_reset ;;

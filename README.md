@@ -42,6 +42,8 @@ Debloat Google TV   TV: not connected
   5) Speed tweaks only
   g) Glass home screen (frosted-glass launcher)
   w) Glass wallpaper from a photo
+  p) Prayer times location
+  h) Google Home control
   6) Other launcher (APK or package)
   7) Bring back stock home screen
   8) Status
@@ -53,6 +55,8 @@ Debloat Google TV   TV: not connected
 - **Older TVs (Network debugging):** choose **1**, enter the TV's IP (Settings → Network), then accept *Allow debugging?* on the TV.
 - **Google TV with Wireless debugging:** choose **2**. On the TV, open *Wireless debugging → Pair device with pairing code*. Enter the **IP:port and code** shown there. Then enter the **IP:port on the main Wireless debugging screen**. Note that the two ports are different.
 - Then choose **3** to make the TV fast, and **r** to reboot.
+- **Prayer times:** choose **p**, then type `gps` (uses the phone's location; needs the Termux:API app) or your town, e.g. `Shah Alam`. In Malaysia, the launcher uses JAKIM's official times for your zone.
+- **Google Home:** choose **h** to set up the Google Home button (Assistant voice control or the TV's Home panel).
 - **Glass look:** choose **g**. To frost your own photo, save it to the phone's Downloads folder, then choose **w**.
 - **Another launcher:** download its APK in your phone's browser, then choose **6**. APKs in your Downloads folder are listed by number.
 
@@ -92,6 +96,9 @@ cd Debloat-google-TV
 | `tweaks [0\|0.5\|1]` | Speed tweaks. The argument is the animation speed (default `0.5`; `0` turns animations off) |
 | `glass` | **Redesign:** installs the frosted-glass home screen and sets it as home |
 | `wallpaper <photo\|--remove>` | Puts your own photo behind the glass |
+| `prayer <gps\|city\|lat,lng>` | Sets the prayer times location. Uses JAKIM's official times in Malaysia, calculated elsewhere, and checks the TV's clock and time zone |
+| `google-home` | Sets up the Google Home button and restores Assistant/casting if they were debloated |
+| `suggestions on\|off\|reset` | Icons for popular apps you haven't installed (installed only when you select them) |
 | `launcher <apk\|package>` | Uses any other launcher instead |
 | `launcher-reset` | Brings back the stock Google TV / Android TV home screen |
 | `restore [backup]` | Undoes everything. By default it restores `original`, the state before your first run |
@@ -109,7 +116,7 @@ Profiles stack: `aggressive` includes `recommended`, and `recommended` includes 
 |---|---|---|
 | `safe` | Tutorials, feedback, Play Games, YouTube Music/Kids/TV, print services, screensavers | Nothing important. Reinstall any app from the Play Store |
 | `recommended` | **+** recommendation engine, Ambient mode, Play Movies, partner promos, TalkBack, calendar/contact sync | Fewer "For you" rows, no ambient photo slideshow |
-| `aggressive` | **+** Google Assistant/voice search, offline speech, TTS, Chromecast built-in, Live Channels | **Voice search and casting to the TV** |
+| `aggressive` | **+** Google Assistant/voice search, offline speech, TTS, Chromecast built-in, Live Channels | **Voice search, casting, and Google Home voice control**. `./gtv.sh google-home` restores the Assistant |
 | `custom` | Whatever you put in [`lists/custom.txt`](lists/custom.txt) (OEM apps, unused streaming apps) | Your choice |
 
 [`lists/protected.txt`](lists/protected.txt) lists packages the tool will **never** remove, even if you add them to a list: Play Services, Play Store, Settings, the keyboard, the setup wizard, the remote service and the stock launchers. Removing any of these can bootloop the TV or brick setup.
@@ -138,7 +145,9 @@ Most of the lag on Google TV comes from the stock home screen. It is full of ads
 ./gtv.sh launcher-reset           # back to the stock home screen
 ```
 
-From the phone menu, choose **g** for the Glass home screen and **w** for a wallpaper. The **Style** button on the TV switches between Aurora, Ocean, Sunset, Graphite and Photo. See [glass-launcher/README.md](glass-launcher/README.md) for how the glass stays fast.
+It also has **prayer times** (JAKIM's official times in Malaysia), a **Google Home** button, and icons for popular apps that are **installed only when you select them**.
+
+From the phone menu, choose **g** for the Glass home screen, **w** for a wallpaper, **p** for the prayer location and **h** for Google Home. The **Style** button on the TV switches between Aurora, Ocean, Sunset, Graphite and Photo. See [glass-launcher/README.md](glass-launcher/README.md) for how the glass stays fast.
 
 ### Or use another launcher
 
