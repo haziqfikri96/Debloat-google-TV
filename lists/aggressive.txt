@@ -7,3 +7,4 @@ com.google.android.tts                    # Google text-to-speech
 com.google.android.apps.mediashell        # Chromecast built-in (casting to the TV)
 com.google.android.tv                     # Live Channels app
 com.google.android.tv.frameworkpackagestubs # "Not supported" intent stubs
+com.google.android.apps.tv.dreamx         # Ambient mode AND the Google Home panel (smart home controls) on Google TV

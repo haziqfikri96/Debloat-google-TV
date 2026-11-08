@@ -532,7 +532,8 @@ google_home() {
   local all; all="$(installed_packages)"
   info "Checking what Google Home control needs"
   local p missing=0
-  for p in com.google.android.katniss com.google.android.apps.mediashell; do
+  # katniss = Assistant, mediashell = Chromecast built-in, dreamx = Home panel + Ambient mode.
+  for p in com.google.android.katniss com.google.android.apps.mediashell com.google.android.apps.tv.dreamx; do
     if grep -qxF "$p" <<<"$all"; then ok "$p present"
     else
       warn "$p was removed (aggressive debloat). Restoring it."
@@ -543,13 +544,17 @@ google_home() {
 
   info "Looking for the Google TV Home panel"
   local -a panels=()
-  local dump; dump="$(q_ dumpsys package 2>/dev/null || true)"
+  local dump; dump="$(q_ dumpsys package 2>/dev/null | tr -d '\000' || true)"
   mapfile -t panels <<<"$(printf '%s\n' "$dump" \
     | grep -oE '[a-z][a-z0-9_.]*/[A-Za-z0-9_.$]*(HomePanel|SmartHome|HomeControl|Dashboard)[A-Za-z0-9_.$]*' \
-    | grep -E '^com\.google\.' | sort -u || true)"
+    | grep -E '^com\.google\.' | grep -vE 'Provider|Handler|Receiver|Service|Privacy' | sort -u || true)"
   [[ -z "${panels[0]:-}" ]] && panels=()
-  local pick=""
-  if (( ${#panels[@]} == 1 )); then
+  local pick="" c
+  # Google TV's smart home panel (seen on Xiaomi / Chromecast Google TV).
+  for c in "${panels[@]}"; do [[ "$c" == *SmartHomeMainActivity ]] && { pick="$c"; break; }; done
+  if [[ -n "$pick" ]]; then
+    :
+  elif (( ${#panels[@]} == 1 )); then
     pick="${panels[0]}"
   elif (( ${#panels[@]} > 1 )); then
     local i; for i in "${!panels[@]}"; do printf '    %d) %s\n' $((i + 1)) "${panels[$i]}"; done
