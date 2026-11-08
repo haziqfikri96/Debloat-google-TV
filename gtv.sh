@@ -689,9 +689,11 @@ menu() {
       "0) Exit"
     read -r -p "Choose: " choice || return 0
     case "$choice" in
-      1) read -r -p "TV IP address (TV: Settings > Network): " ip
+      1) read -r -p "TV IP address (TV: Settings > Network; Enter = back): " ip
+         [[ -z "$ip" ]] && continue
          if ( connect_tv "$ip" ); then SERIAL="$(cat "$DEVICE_FILE")"; ok "Connected to $SERIAL"; fi ;;
-      2) read -r -p "IP:PORT under 'Pair device with pairing code': " ip
+      2) read -r -p "IP:PORT under 'Pair device with pairing code' (Enter = back): " ip
+         [[ -z "$ip" ]] && continue
          read -r -p "6-digit code: " code
          ( pair_tv "$ip" "$code" ) || continue
          read -r -p "IP:PORT shown on the Wireless debugging screen: " ip
