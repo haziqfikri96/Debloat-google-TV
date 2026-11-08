@@ -13,6 +13,8 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
 LISTS="$ROOT/lists"
 BACKUPS="$ROOT/backups"
+GLASS_PKG="io.github.debloatgtv.glass"
+GLASS_URL="https://github.com/haziqfikri96/Debloat-google-TV/releases/download/glass-latest/glass-launcher.apk"
 DEVICE_FILE="$ROOT/.gtv-device"   # last TV we connected to (handy on a phone)
 DRY_RUN=0
 SERIAL="${ANDROID_SERIAL:-}"
@@ -264,6 +266,92 @@ downloaded_apks() {
   done | sort -u
 }
 
+# adb install, retrying after uninstall if an old copy was signed differently.
+install_apk() {
+  local out pkg
+  out="$(adb_ install -r "$1" 2>&1 || true)"
+  [[ "$out" == *Success* ]] && return 0
+  if [[ "$out" == *UPDATE_INCOMPATIBLE* || "$out" == *INCONSISTENT_CERTIFICATES* ]]; then
+    pkg="$(sed -n 's/.*Package \([a-zA-Z0-9_.]*\) signatures.*/\1/p' <<<"$out" | head -n1)"
+    [[ -z "$pkg" && "$(basename "$1")" == glass-launcher*.apk ]] && pkg="$GLASS_PKG"
+    if [[ -n "$pkg" ]]; then
+      warn "An older build of $pkg is signed differently; reinstalling it"
+      adb_ uninstall "$pkg" >/dev/null 2>&1 || true
+      out="$(adb_ install -r "$1" 2>&1 || true)"
+      [[ "$out" == *Success* ]] && return 0
+    fi
+  fi
+  die "Install failed: $out"
+}
+
+# ------------------------------------------------------------ glass launcher --
+# Finds a Glass Launcher APK: local build, Downloads, or the latest GitHub release.
+glass_apk() {
+  local f
+  for f in "${GLASS_APK:-}" \
+           "$ROOT/glass-launcher/app/build/outputs/apk/release/app-release.apk" \
+           "$HOME/storage/downloads/glass-launcher.apk" "$HOME/Downloads/glass-launcher.apk"; do
+    [[ -n "$f" && -f "$f" ]] && { echo "$f"; return; }
+  done
+  command -v curl >/dev/null || die "curl not found (Termux: pkg install curl)"
+  mkdir -p "$ROOT/.cache"
+  f="$ROOT/.cache/glass-launcher.apk"
+  info "Downloading Glass Launcher" >&2
+  curl -fL --retry 3 -o "$f.part" "$GLASS_URL" >&2 \
+    || die "Download failed. Build it yourself (see glass-launcher/README.md) or
+       download glass-launcher.apk from the repo's Releases page into Downloads."
+  mv "$f.part" "$f"
+  echo "$f"
+}
+
+glass() {
+  require_device
+  local apk; apk="$(glass_apk)"
+  launcher "$apk"
+  # Lets the launcher read a wallpaper pushed with `./gtv.sh wallpaper`.
+  sh_ pm grant "$GLASS_PKG" android.permission.READ_MEDIA_IMAGES >/dev/null 2>&1 \
+    || sh_ pm grant "$GLASS_PKG" android.permission.READ_EXTERNAL_STORAGE >/dev/null 2>&1 || true
+  ok "Glass Launcher is your home screen. Change the look with the Style button,"
+  ok "or use your own photo: ./gtv.sh wallpaper <photo.jpg>"
+}
+
+wallpaper() {
+  local img="${1:-}"
+  [[ -n "$img" ]] || die "Usage: ./gtv.sh wallpaper <photo.jpg|png> | --remove"
+  require_device
+  local pics=/sdcard/Pictures/glass-wallpaper.jpg
+  local own="/sdcard/Android/data/$GLASS_PKG/files/wallpaper.jpg"
+  if [[ "$img" == --remove ]]; then
+    sh_ rm -f "$pics" "$own" >/dev/null 2>&1 || true
+    ok "Custom wallpaper removed"
+  else
+    img="$(find_file "$img")" || die "Image not found: $1 (looked here, in Downloads and Pictures)"
+    info "Sending $(basename "$img") to the TV"
+    if (( DRY_RUN )); then printf '    [dry-run] adb push %s %s\n' "$img" "$pics"
+    else
+      adb_ push "$img" "$pics" >/dev/null || die "Could not copy the image to the TV"
+      # Also into the app's own folder (readable without any permission).
+      sh_ mkdir -p "$(dirname "$own")" >/dev/null 2>&1 || true
+      sh_ cp "$pics" "$own" >/dev/null 2>&1 || true
+    fi
+    sh_ pm grant "$GLASS_PKG" android.permission.READ_MEDIA_IMAGES >/dev/null 2>&1 \
+      || sh_ pm grant "$GLASS_PKG" android.permission.READ_EXTERNAL_STORAGE >/dev/null 2>&1 || true
+    ok "Wallpaper set (Style: Photo). The glass now frosts your photo."
+  fi
+  sh_ am force-stop "$GLASS_PKG" >/dev/null 2>&1 || true
+  sh_ am start -a android.intent.action.MAIN -c android.intent.category.HOME >/dev/null 2>&1 || true
+}
+
+find_file() {
+  local f="$1" d
+  [[ -f "$f" ]] && { echo "$f"; return; }
+  for d in "$HOME/storage/downloads" "$HOME/storage/pictures" /sdcard/Download /sdcard/Pictures \
+           "$HOME/Downloads" "$HOME/Pictures"; do
+    [[ -f "$d/$(basename "$f")" ]] && { echo "$d/$(basename "$f")"; return; }
+  done
+  return 1
+}
+
 launcher() {
   local target="${1:-}"
   [[ -n "$target" ]] || die "Usage: ./gtv.sh launcher <launcher.apk | package.name>"
@@ -276,7 +364,7 @@ launcher() {
     info "Installing $(basename "$target") on the TV"
     local before; before="$(installed_packages)"
     if (( DRY_RUN )); then printf '    [dry-run] adb install -r %s\n' "$target"
-    else adb_ install -r "$target" >/dev/null || die "Install failed"; fi
+    else install_apk "$target"; fi
     # Package name: from aapt if available, otherwise whatever is new on the TV
     # (aapt usually isn't installed on a phone).
     pkg="$(aapt dump badging "$target" 2>/dev/null | sed -n "s/^package: name='\([^']*\)'.*/\1/p" || true)"
@@ -408,7 +496,9 @@ menu() {
       "3) Make it fast (backup + recommended debloat + speed tweaks)" \
       "4) Debloat only (choose level)" \
       "5) Speed tweaks only" \
-      "6) New home screen (launcher)" \
+      "g) Glass home screen (frosted-glass launcher)" \
+      "w) Glass wallpaper from a photo" \
+      "6) Other launcher (APK or package)" \
       "7) Bring back stock home screen" \
       "8) Status" \
       "9) Undo everything" \
@@ -438,6 +528,10 @@ menu() {
          read -r -p "Number from the list, an APK path, or an installed package name: " apk
          if [[ "$apk" =~ ^[0-9]+$ ]] && (( apk >= 1 && apk <= ${#apks[@]} )); then apk="${apks[$((apk - 1))]}"; fi
          [[ -n "$apk" ]] && { ( launcher "$apk" ) || true; } ;;
+      g|G) ( glass ) || true ;;
+      w|W) read -r -p "Photo file name in Downloads/Pictures (or full path), or 'remove': " p
+           [[ "$p" == remove ]] && p=--remove
+           [[ -n "$p" ]] && { ( wallpaper "$p" ) || true; } ;;
       7) ( launcher_reset ) || true ;;
       8) ( status ) || true ;;
       9) ( restore ) || true ;;
@@ -467,7 +561,9 @@ Commands
   all [profile]          backup + debloat + tweaks (default profile: recommended)
   debloat [profile]      Remove bloat: safe | recommended | aggressive | custom | <file>
   tweaks [0|0.5|1]       Speed tweaks; arg = animation scale (default 0.5, 0 = off)
-  launcher <apk|pkg>     Redesign: install/set a new launcher, disable the stock one
+  glass                  Redesign: install the frosted-glass home screen (Glass Launcher)
+  wallpaper <img|--remove>  Use your own photo behind the glass
+  launcher <apk|pkg>     Use any other launcher instead
   launcher-reset         Go back to the stock Google TV / Android TV home screen
   backup                 Snapshot packages + settings (done automatically before changes)
   backups                List backups
@@ -498,6 +594,8 @@ case "$cmd" in
   all)            debloat "${1:-recommended}"; tweaks ;;
   debloat)        debloat "$@" ;;
   tweaks)         tweaks "$@" ;;
+  glass)          glass ;;
+  wallpaper)      wallpaper "$@" ;;
   launcher)       launcher "$@" ;;
   launcher-reset) launcher_reset ;;
   backup)         backup ;;

@@ -40,7 +40,9 @@ Debloat Google TV   TV: not connected
   3) Make it fast (backup + recommended debloat + speed tweaks)
   4) Debloat only (choose level)
   5) Speed tweaks only
-  6) New home screen (launcher)
+  g) Glass home screen (frosted-glass launcher)
+  w) Glass wallpaper from a photo
+  6) Other launcher (APK or package)
   7) Bring back stock home screen
   8) Status
   9) Undo everything
@@ -51,7 +53,8 @@ Debloat Google TV   TV: not connected
 - **Older TVs (Network debugging):** choose **1**, enter the TV's IP (Settings → Network), then accept *Allow debugging?* on the TV.
 - **Google TV with Wireless debugging:** choose **2**. On the TV, open *Wireless debugging → Pair device with pairing code*. Enter the **IP:port and code** shown there. Then enter the **IP:port on the main Wireless debugging screen**. Note that the two ports are different.
 - Then choose **3** to make the TV fast, and **r** to reboot.
-- **New home screen from your phone:** download the launcher APK in your phone's browser, then choose **6**. APKs in your Downloads folder are listed by number.
+- **Glass look:** choose **g**. To frost your own photo, save it to the phone's Downloads folder, then choose **w**.
+- **Another launcher:** download its APK in your phone's browser, then choose **6**. APKs in your Downloads folder are listed by number.
 
 The TV address is remembered, so the next time you open `gtv`, you can go straight to any option.
 
@@ -87,7 +90,9 @@ cd Debloat-google-TV
 | `all [profile]` | Backup, debloat (default `recommended`), then speed tweaks |
 | `debloat <profile>` | Removes the packages in a profile (see below) |
 | `tweaks [0\|0.5\|1]` | Speed tweaks. The argument is the animation speed (default `0.5`; `0` turns animations off) |
-| `launcher <apk\|package>` | **Redesign:** installs a launcher, sets it as home, and disables the stock home screen |
+| `glass` | **Redesign:** installs the frosted-glass home screen and sets it as home |
+| `wallpaper <photo\|--remove>` | Puts your own photo behind the glass |
+| `launcher <apk\|package>` | Uses any other launcher instead |
 | `launcher-reset` | Brings back the stock Google TV / Android TV home screen |
 | `restore [backup]` | Undoes everything. By default it restores `original`, the state before your first run |
 | `status` | Model, RAM, animation speeds, home app, bloat still installed, top memory users |
@@ -121,25 +126,32 @@ You can also pass a list file directly: `./gtv.sh debloat my-list.txt`.
 | `pm trim-caches` | Frees storage. Low storage makes Android TV crawl |
 | ART `speed-profile` compile for all apps | Apps start and scroll faster. Takes a few minutes once |
 
-## Redesign: replace the home screen
+## Redesign: frosted-glass home screen
 
-Most of the lag on Google TV comes from the stock home screen. It is full of ads, autoplaying trailers and heavy recommendation rows. A lightweight launcher makes the biggest difference of anything here.
+Most of the lag on Google TV comes from the stock home screen. It is full of ads, autoplaying trailers and heavy recommendation rows. This repo includes **[Glass Launcher](glass-launcher/)**, a tiny home screen with a frosted-glass design that is built to stay smooth on cheap TV hardware.
 
-1. Download a TV launcher APK, for example:
-   - **Projectivy Launcher**: clean, customisable, and can override the home button
-   - **FLauncher**: open source, minimal, no ads
-   - **Wolf Launcher** or **ATV Launcher**: very light
-2. Then run:
+![Glass Launcher](docs/glass-aurora.jpg)
 
 ```bash
-./gtv.sh -s 192.168.1.50 launcher ~/Downloads/launcher.apk   # install + set as home
-# or, if it's already installed from the Play Store:
-./gtv.sh -s 192.168.1.50 launcher com.spocky.projengmenu
+./gtv.sh glass                    # install it and make it the home screen
+./gtv.sh wallpaper beach.jpg      # optional: put your own photo behind the glass
+./gtv.sh launcher-reset           # back to the stock home screen
 ```
 
-The script sets the new launcher as the home activity and **disables** (does not uninstall) the stock launcher. To undo it, run `./gtv.sh launcher-reset`.
+From the phone menu, choose **g** for the Glass home screen and **w** for a wallpaper. The **Style** button on the TV switches between Aurora, Ocean, Sunset, Graphite and Photo. See [glass-launcher/README.md](glass-launcher/README.md) for how the glass stays fast.
 
-> On some Chromecast / Google TV firmware, the HOME button is hard-wired to the stock launcher. If HOME still opens Google TV, turn on your launcher's own "override home button" accessibility option (Projectivy has one).
+### Or use another launcher
+
+You can also install any other TV launcher APK, for example **Projectivy Launcher**, **FLauncher**, or **Wolf Launcher** / **ATV Launcher**:
+
+```bash
+./gtv.sh launcher ~/Downloads/launcher.apk   # install + set as home
+./gtv.sh launcher com.spocky.projengmenu     # already installed from the Play Store
+```
+
+Either way, the script sets the new launcher as the home activity and **disables** (does not uninstall) the stock launcher. To undo it, run `./gtv.sh launcher-reset`.
+
+> On some Chromecast / Google TV firmware, the HOME button is hard-wired to the stock launcher. If HOME still opens Google TV, use a launcher with an "override home button" accessibility option (Projectivy has one).
 
 ## Undo / troubleshooting
 
