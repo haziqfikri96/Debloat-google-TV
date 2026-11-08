@@ -595,6 +595,32 @@ find_file() {
   return 1
 }
 
+# Apps that can grab the HOME button before Android's default home app:
+# accessibility services such as Button Mapper or a launcher's "override home".
+check_home_overrides() {
+  local want="${1:-}" svcs svc pkg found=0 name="${1:-your launcher}"
+  [[ "$want" == "$GLASS_PKG" ]] && name="Glass Launcher"
+  svcs="$(q_ settings get secure enabled_accessibility_services 2>/dev/null || true)"
+  [[ -z "$svcs" || "$svcs" == null ]] && return 0
+  local IFS=:
+  for svc in $svcs; do
+    pkg="${svc%%/*}"
+    [[ -z "$pkg" || "$pkg" == "$want" ]] && continue
+    case "$pkg" in
+      com.google.android.marvin.talkback|com.android.talkback) continue ;;
+      flar2.homebutton)
+        warn "Button Mapper is active: if it remaps HOME, set Home > Single tap > Launch app > $name." ;;
+      com.spocky.projengmenu)
+        warn "Projectivy Launcher is active: turn off its 'Override home button / launcher' setting." ;;
+      *)
+        warn "$pkg runs as an accessibility service and may catch the HOME button." ;;
+    esac
+    found=1
+  done
+  (( found )) && warn "If HOME still opens another launcher, change the app(s) above (TV Settings > Accessibility)."
+  return 0
+}
+
 launcher() {
   local target="${1:-}"
   [[ -n "$target" ]] || die "Usage: ./gtv.sh launcher <launcher.apk | package.name>"
@@ -638,6 +664,7 @@ launcher() {
   if [[ "${KEEP_STOCK:-0}" == 1 ]]; then
     ok "Stock launcher kept enabled (long-press HOME still opens the Google Home panel)."
     warn "If HOME still opens Google TV, run: ./gtv.sh glass --replace"
+    check_home_overrides "$pkg"
     return 0
   fi
   info "Disabling the stock launcher(s) so HOME goes to the new one"
@@ -648,6 +675,7 @@ launcher() {
       sh_ pm disable-user --user 0 "$s" >/dev/null && ok "disabled $s"
     fi
   done
+  check_home_overrides "$pkg"
   info "Done. Press HOME on the remote. Undo with: ./gtv.sh launcher-reset"
 }
 
@@ -717,6 +745,9 @@ status() {
     "$(q_ settings get global transition_animation_scale)" "$(q_ settings get global animator_duration_scale)"
   info "Home app"
   printf '    %s\n' "$(q_ cmd package resolve-activity --brief -c android.intent.category.HOME -a android.intent.action.MAIN | tail -n1)"
+  info "HOME button overrides"
+  local before_warn; before_warn="$(check_home_overrides "" 2>&1)"
+  if [[ -n "$before_warn" ]]; then printf '%s\n' "$before_warn"; else ok "none"; fi
   info "Bloat still installed"
   local installed f p any=0; installed="$(installed_packages)"
   for f in safe recommended aggressive; do
