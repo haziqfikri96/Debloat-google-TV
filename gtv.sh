@@ -831,12 +831,43 @@ uninstall_apps() {
   for p in "$@"; do
     if is_protected "$p" || [[ "$p" == "$GLASS_PKG" ]]; then warn "Not removing $p (needed by the TV or Glass)"; continue; fi
     if ! grep -qxF "$p" <<<"$installed"; then ok "$p is not installed (already removed)"; continue; fi
-    if grep -qxF "$p" <<<"$system"; then warn "$p is a system app: use a debloat profile or lists/custom.txt instead"; continue; fi
+    if grep -qxF "$p" <<<"$system"; then
+      # Preinstalled: remove for this user only (like debloat), so `restore` can bring it back.
+      (( DRY_RUN )) || ensure_backup
+      out="$(sh_ pm uninstall -k --user 0 "$p" 2>&1 || true)"
+      if (( DRY_RUN )) || [[ "$out" == *Success* ]]; then ok "removed $p (preinstalled; ./gtv.sh restore brings it back)"
+      else
+        out="$(sh_ pm disable-user --user 0 "$p" 2>&1 || true)"
+        if [[ "$out" == *disabled* ]]; then ok "disabled $p"; else warn "$p: ${out:-failed}"; fi
+      fi
+      continue
+    fi
     if (( DRY_RUN )); then printf '    [dry-run] adb uninstall %s\n' "$p"; continue; fi
     out="$(adb_ uninstall "$p" 2>&1 || true)"
     if [[ "$out" == *Success* ]]; then ok "removed $p"
     else warn "$p: ${out:-failed}"; fi
   done
+}
+
+# Apps that appear on the TV's home screen, with their package names.
+apps() {
+  require_device
+  local out system p kind
+  out="$(q_ cmd package query-activities --brief -a android.intent.action.MAIN \
+         -c android.intent.category.LEANBACK_LAUNCHER 2>/dev/null || true)"
+  if [[ -z "$(grep -oE '[a-z][a-zA-Z0-9_.]*/' <<<"$out" | head -n1 || true)" ]]; then
+    out="$(q_ dumpsys package 2>/dev/null | tr -d '\000' | grep -B3 'android.intent.category.LEANBACK_LAUNCHER' || true)"
+  fi
+  system="$(q_ pm list packages -s | sed 's/^package://')"
+  info "TV apps (package name, then system = preinstalled / yours = you installed it)"
+  for p in $(grep -oE '[a-z][a-zA-Z0-9_]*(\.[a-zA-Z0-9_]+)+/' <<<"$out" | tr -d / | sort -u); do
+    [[ "$p" == "$GLASS_PKG" ]] && continue
+    kind=yours; grep -qxF "$p" <<<"$system" && kind=system
+    is_protected "$p" && kind="system, keep"
+    printf '    %-45s %s\n' "$p" "$kind"
+  done
+  echo
+  ok "Remove with: gtv uninstall <package> [package...]"
 }
 
 packages() {
@@ -947,7 +978,8 @@ Commands
   restore [name]         Undo everything (default: 'original' = state before first run)
   status                 Device info, memory, remaining bloat
   packages [filter]      List installed packages
-  uninstall <pkg>...     Remove apps you installed yourself (e.g. an old launcher)
+  apps                   List the apps on the home screen with their package names
+  uninstall <pkg>...     Remove apps (preinstalled ones reversibly, like debloat)
   reboot                 Reboot the TV
 EOF
 }
@@ -989,6 +1021,7 @@ case "$cmd" in
   status)         status ;;
   packages)       packages "$@" ;;
   uninstall)      uninstall_apps "$@" ;;
+  apps)           apps ;;
   reboot)         require_device; info "Rebooting"; adb_ reboot ;;
   help|-h|--help) usage ;;
   *)              usage; exit 1 ;;
