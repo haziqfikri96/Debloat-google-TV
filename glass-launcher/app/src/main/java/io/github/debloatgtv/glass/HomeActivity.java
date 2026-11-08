@@ -98,6 +98,8 @@ public class HomeActivity extends Activity {
 
     // glass pop-up menu (drawn inside this window so the glass lines up)
     private FrameLayout menuLayer;
+    private LinearLayout content;   // everything behind a menu
+    private boolean startedOnce;
     private View focusBeforeMenu;
     private GlassFrame inputsPill;
 
@@ -128,6 +130,14 @@ public class HomeActivity extends Activity {
         buildUi();
         loadTheme(pickTheme());
         loadApps();
+        // Listen for app installs/removals for the whole lifetime, not just while visible:
+        // apps removed over adb or from Settings must disappear from Home.
+        IntentFilter pkg = new IntentFilter(Intent.ACTION_PACKAGE_ADDED);
+        pkg.addAction(Intent.ACTION_PACKAGE_REMOVED);
+        pkg.addAction(Intent.ACTION_PACKAGE_CHANGED);
+        pkg.addAction(Intent.ACTION_PACKAGE_FULLY_REMOVED);
+        pkg.addDataScheme("package");
+        register(packageReceiver, pkg);
     }
 
     @Override
@@ -138,11 +148,9 @@ public class HomeActivity extends Activity {
         time.addAction(Intent.ACTION_TIME_CHANGED);
         time.addAction(Intent.ACTION_TIMEZONE_CHANGED);
         register(clockReceiver, time);
-        IntentFilter pkg = new IntentFilter(Intent.ACTION_PACKAGE_ADDED);
-        pkg.addAction(Intent.ACTION_PACKAGE_REMOVED);
-        pkg.addAction(Intent.ACTION_PACKAGE_CHANGED);
-        pkg.addDataScheme("package");
-        register(packageReceiver, pkg);
+        // Catch anything that changed while another app was on screen.
+        if (startedOnce) loadApps();
+        startedOnce = true;
         // A new wallpaper may have been pushed while we were in the background.
         int t = pickTheme();
         if (t != Glass.theme) loadTheme(t);
@@ -153,12 +161,12 @@ public class HomeActivity extends Activity {
     protected void onStop() {
         super.onStop();
         unregisterReceiver(clockReceiver);
-        unregisterReceiver(packageReceiver);
     }
 
     @Override
     protected void onDestroy() {
         super.onDestroy();
+        try { unregisterReceiver(packageReceiver); } catch (IllegalArgumentException ignored) {}
         worker.shutdownNow();
     }
 
@@ -251,6 +259,7 @@ public class HomeActivity extends Activity {
 
         // 5% TV overscan-safe margins.
         LinearLayout column = new LinearLayout(this);
+        content = column;
         column.setOrientation(LinearLayout.VERTICAL);
         column.setPadding(dp(48), dp(27), dp(48), 0);
         column.setClipChildren(false);
@@ -943,11 +952,14 @@ public class HomeActivity extends Activity {
         FrameLayout.LayoutParams plp = new FrameLayout.LayoutParams(dp(360), -2, Gravity.CENTER);
         menuLayer.addView(panel, plp);
         root.addView(menuLayer, new FrameLayout.LayoutParams(-1, -1));
+        // Keep the remote's focus inside the menu: nothing behind it can be selected.
+        content.setDescendantFocusability(ViewGroup.FOCUS_BLOCK_DESCENDANTS);
         if (first != null) first.requestFocus();
     }
 
     private void closeMenu() {
         if (menuLayer == null) return;
+        content.setDescendantFocusability(ViewGroup.FOCUS_AFTER_DESCENDANTS);
         root.removeView(menuLayer);
         menuLayer = null;
         if (focusBeforeMenu != null && focusBeforeMenu.isAttachedToWindow()) focusBeforeMenu.requestFocus();
