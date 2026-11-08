@@ -849,25 +849,77 @@ uninstall_apps() {
   done
 }
 
-# Apps that appear on the TV's home screen, with their package names.
+# Friendly names for package names (adb can't read app labels).
+declare -A APP_NAMES=(
+  [com.amazon.amazonvideo.livingroom]="Prime Video"   [com.android.tv.settings]="Settings"
+  [com.android.vending]="Google Play Store"           [com.cybercat.adbappcontrol.tv]="ADB AppControl"
+  [com.disney.disneyplus]="Disney+"                   [com.google.android.youtube.tv]="YouTube"
+  [com.google.android.youtube.tvmusic]="YouTube Music" [com.google.android.youtube.tvkids]="YouTube Kids"
+  [com.mitv.gallery]="Gallery (Xiaomi)"              [com.mitv.livetv]="Live TV (Xiaomi)"
+  [com.mitv.tvhome.atv]="PatchWall"                   [com.mitv.tvhome.mitvplus]="Xiaomi TV+"
+  [com.netflix.ninja]="Netflix"                       [com.spotify.tv.android]="Spotify"
+  [com.tcl.browser]="BrowseHere (browser)"            [com.vuclip.viu.tv]="Viu"
+  [com.xiaomi.mitv.mediaexplorer]="Media Explorer (USB player)"
+  [com.xiaomi.mitv.smartshare]="Screen mirroring (Miracast)"
+  [com.xiaomi.mitv.tvmanager]="TV Manager"            [flar2.homebutton]="Button Mapper"
+  [com.spocky.projengmenu]="Projectivy Launcher"      [org.videolan.vlc]="VLC"
+  [com.plexapp.android]="Plex"                        [com.google.android.videos]="Google TV (Play Movies)"
+)
+# Worth a warning before removing.
+declare -A APP_NOTES=(
+  [com.mitv.livetv]="may handle HDMI inputs / TV channels"
+  [com.xiaomi.mitv.smartshare]="needed to mirror a phone screen"
+  [flar2.homebutton]="your remote button shortcuts"
+)
+
+# Numbered list of home-screen apps; pick numbers to remove.
 apps() {
   require_device
-  local out system p kind
+  local out system p
   out="$(q_ cmd package query-activities --brief -a android.intent.action.MAIN \
          -c android.intent.category.LEANBACK_LAUNCHER 2>/dev/null || true)"
   if [[ -z "$(grep -oE '[a-z][a-zA-Z0-9_.]*/' <<<"$out" | head -n1 || true)" ]]; then
     out="$(q_ dumpsys package 2>/dev/null | tr -d '\000' | grep -B3 'android.intent.category.LEANBACK_LAUNCHER' || true)"
   fi
   system="$(q_ pm list packages -s | sed 's/^package://')"
-  info "TV apps (package name, then system = preinstalled / yours = you installed it)"
+  local -a list=()
   for p in $(grep -oE '[a-z][a-zA-Z0-9_]*(\.[a-zA-Z0-9_]+)+/' <<<"$out" | tr -d / | sort -u); do
     [[ "$p" == "$GLASS_PKG" ]] && continue
-    kind=yours; grep -qxF "$p" <<<"$system" && kind=system
-    is_protected "$p" && kind="system, keep"
-    printf '    %-45s %s\n' "$p" "$kind"
+    list+=("$p")
   done
+  (( ${#list[@]} )) || die "Couldn't list the TV's apps."
+
+  info "Apps on your TV"
+  local i n=0 name tag
+  for i in "${!list[@]}"; do
+    p="${list[$i]}"; name="${APP_NAMES[$p]:-$p}"
+    if is_protected "$p"; then tag="keep (needed)"
+    elif grep -qxF "$p" <<<"$system"; then tag="preinstalled"
+    else tag="yours"; fi
+    printf '  %2d) %s  [%s]\n' $((i + 1)) "$name" "$tag"
+    [[ -n "${APP_NOTES[$p]:-}" ]] && printf '      ! %s\n' "${APP_NOTES[$p]}"
+    n=$((n + 1))
+  done
+  [[ -t 0 ]] || return 0
+
+  local picks
   echo
-  ok "Remove with: gtv uninstall <package> [package...]"
+  read -r -p "Numbers to remove (e.g. 1 4 7), Enter = cancel: " picks || return 0
+  [[ -n "$picks" ]] || return 0
+  local -a chosen=()
+  for i in ${picks//,/ }; do
+    if [[ "$i" =~ ^[0-9]+$ ]] && (( i >= 1 && i <= n )); then
+      p="${list[$((i - 1))]}"
+      if is_protected "$p"; then warn "Skipping ${APP_NAMES[$p]:-$p} (the TV needs it)"; else chosen+=("$p"); fi
+    else
+      warn "Ignoring '$i' (not a number from the list)"
+    fi
+  done
+  (( ${#chosen[@]} )) || return 0
+  info "Will remove:"
+  for p in "${chosen[@]}"; do printf '    %s\n' "${APP_NAMES[$p]:-$p}"; done
+  confirm "Remove these ${#chosen[@]} app(s)? Preinstalled ones can be brought back with 'Undo everything'." || return 0
+  uninstall_apps "${chosen[@]}"
 }
 
 packages() {
@@ -895,6 +947,7 @@ menu() {
       "w) Glass wallpaper from a photo" \
       "p) Prayer times location" \
       "h) Google Home control" \
+      "u) Remove apps (pick by number)" \
       "6) Other launcher (APK or package)" \
       "7) Bring back stock home screen" \
       "8) Status" \
@@ -933,6 +986,7 @@ menu() {
            read -r -p "Location: " p
            [[ -n "$p" ]] && { ( prayer "$p" ) || true; } ;;
       h|H) ( google_home ) || true ;;
+      u|U) ( apps ) || true ;;
       w|W) read -r -p "Photo file name in Downloads/Pictures (or full path), or 'remove': " p
            [[ "$p" == remove ]] && p=--remove
            [[ -n "$p" ]] && { ( wallpaper "$p" ) || true; } ;;
@@ -978,7 +1032,7 @@ Commands
   restore [name]         Undo everything (default: 'original' = state before first run)
   status                 Device info, memory, remaining bloat
   packages [filter]      List installed packages
-  apps                   List the apps on the home screen with their package names
+  apps                   Numbered list of home-screen apps; pick numbers to remove
   uninstall <pkg>...     Remove apps (preinstalled ones reversibly, like debloat)
   reboot                 Reboot the TV
 EOF
