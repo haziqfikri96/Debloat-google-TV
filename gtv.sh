@@ -299,6 +299,20 @@ install_apk() {
   local out pkg
   out="$(adb_ install -r "$1" 2>&1 || true)"
   [[ "$out" == *Success* ]] && return 0
+  # Wi-Fi ADB links can drop mid-transfer (common from a phone): reconnect, retry once.
+  if [[ "$out" == *offline* || "$out" == *closed* || "$out" == *"no devices"* ]]; then
+    warn "Connection to the TV dropped; reconnecting and retrying"
+    if [[ "$SERIAL" == *:* ]]; then
+      adb disconnect "$SERIAL" >/dev/null 2>&1 || true
+      adb connect "$SERIAL" >/dev/null 2>&1 || true
+    fi
+    local i; for i in 1 2 3 4 5 6 7 8 9 10; do
+      [[ "$(adb_ get-state 2>/dev/null || true)" == device ]] && break
+      sleep 1
+    done
+    out="$(adb_ install -r "$1" 2>&1 || true)"
+    [[ "$out" == *Success* ]] && return 0
+  fi
   if [[ "$out" == *UPDATE_INCOMPATIBLE* || "$out" == *INCONSISTENT_CERTIFICATES* ]]; then
     pkg="$(sed -n 's/.*Package \([a-zA-Z0-9_.]*\) signatures.*/\1/p' <<<"$out" | head -n1)"
     [[ -z "$pkg" && "$(basename "$1")" == glass-launcher*.apk ]] && pkg="$GLASS_PKG"
@@ -591,7 +605,9 @@ launcher() {
     else install_apk "$target"; fi
     # Package name: from aapt if available, otherwise whatever is new on the TV
     # (aapt usually isn't installed on a phone).
-    pkg="$(aapt dump badging "$target" 2>/dev/null | sed -n "s/^package: name='\([^']*\)'.*/\1/p" || true)"
+    # Known component (e.g. Glass): no need to guess the package.
+    [[ -n "${HOME_ACTIVITY:-}" ]] && pkg="${HOME_ACTIVITY%%/*}" || pkg=""
+    [[ -z "$pkg" ]] && pkg="$(aapt dump badging "$target" 2>/dev/null | sed -n "s/^package: name='\([^']*\)'.*/\1/p" || true)"
     if [[ -z "$pkg" ]] && (( ! DRY_RUN )); then
       local p
       for p in $(installed_packages); do
