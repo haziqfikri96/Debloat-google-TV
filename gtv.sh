@@ -820,6 +820,23 @@ status() {
   q_ dumpsys meminfo 2>/dev/null | awk '/Total PSS by process/{f=1;next} f&&NF==0{exit} f' | head -n 8 | sed 's/^ */    /' || true
 }
 
+# Remove apps you installed yourself (Play Store / sideloaded). System apps go
+# through `debloat` instead, which keeps them restorable.
+uninstall_apps() {
+  (( $# )) || die "Usage: ./gtv.sh uninstall <package> [package...]   (find names with: ./gtv.sh packages)"
+  require_device
+  local p out
+  for p in "$@"; do
+    if is_protected "$p" || [[ "$p" == "$GLASS_PKG" ]]; then warn "Not removing $p (needed by the TV or Glass)"; continue; fi
+    if (( DRY_RUN )); then printf '    [dry-run] adb uninstall %s\n' "$p"; continue; fi
+    out="$(adb_ uninstall "$p" 2>&1 || true)"
+    if [[ "$out" == *Success* ]]; then ok "removed $p"
+    elif [[ "$out" == *DELETE_FAILED_INTERNAL_ERROR* || "$out" == *"not installed for"* ]]; then
+      warn "$p is a system app: use a debloat profile or lists/custom.txt instead"
+    else warn "$p: ${out:-failed}"; fi
+  done
+}
+
 packages() {
   require_device
   if [[ -n "${1:-}" ]]; then installed_packages | grep -i -- "$1" || true; else installed_packages; fi
@@ -928,6 +945,7 @@ Commands
   restore [name]         Undo everything (default: 'original' = state before first run)
   status                 Device info, memory, remaining bloat
   packages [filter]      List installed packages
+  uninstall <pkg>...     Remove apps you installed yourself (e.g. an old launcher)
   reboot                 Reboot the TV
 EOF
 }
@@ -968,6 +986,7 @@ case "$cmd" in
   restore)        restore "$@" ;;
   status)         status ;;
   packages)       packages "$@" ;;
+  uninstall)      uninstall_apps "$@" ;;
   reboot)         require_device; info "Rebooting"; adb_ reboot ;;
   help|-h|--help) usage ;;
   *)              usage; exit 1 ;;
