@@ -1,0 +1,16 @@
+# SAFE profile — removing these does not affect core TV, streaming, Play Store,
+# voice search, or casting. Promo apps, tutorials, feedback and print services.
+# Format: package.name  # description
+com.google.android.tvtutorials            # On-device tutorials
+com.google.android.feedback               # Feedback / crash report sender
+com.google.android.play.games             # Google Play Games
+com.google.android.youtube.tvmusic        # YouTube Music (reinstall from Play if wanted)
+com.google.android.youtube.tvkids         # YouTube Kids
+com.google.android.youtube.tvunplugged    # YouTube TV
+com.google.android.apps.turbo             # Device Health Services (phone battery predictions)
+com.android.printspooler                  # Print spooler (no printing on TV)
+com.android.bips                          # Default print service
+com.android.egg                           # Android easter egg
+com.android.dreams.basic                  # Basic screensaver
+com.android.dreams.phototable             # Photo screensaver
+com.android.wallpaperbackup               # Wallpaper backup

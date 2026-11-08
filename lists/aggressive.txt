@@ -1,0 +1,9 @@
+# AGGRESSIVE profile — applied on top of RECOMMENDED.
+# WARNING: removes Google Assistant voice search, Chromecast built-in,
+# text-to-speech and Live Channels. Only use if you never use these.
+com.google.android.katniss                # Google app for TV (Assistant / voice search)
+com.google.android.speech.pumpkin         # Offline speech recognition
+com.google.android.tts                    # Google text-to-speech
+com.google.android.apps.mediashell        # Chromecast built-in (casting to the TV)
+com.google.android.tv                     # Live Channels app
+com.google.android.tv.frameworkpackagestubs # "Not supported" intent stubs

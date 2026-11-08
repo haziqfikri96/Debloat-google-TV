@@ -1,0 +1,13 @@
+# RECOMMENDED profile — applied on top of SAFE. Removes background services
+# that constantly poll the network / build recommendation rows.
+# Home screen keeps working; "For You" rows get lighter.
+com.google.android.tvrecommendations      # Recommendation row generator
+com.google.android.leanbacklauncher.recommendations # Legacy recommendation service
+com.google.android.backdrop               # Ambient mode (Android TV)
+com.google.android.apps.tv.dreamx         # Ambient mode (Google TV)
+com.google.android.videos                 # Google TV / Play Movies store app
+com.google.android.music                  # Legacy Play Music
+com.google.android.partnersetup           # Partner setup / promo
+com.google.android.marvin.talkback        # TalkBack (re-enable if you need accessibility)
+com.google.android.syncadapters.calendar  # Calendar sync
+com.google.android.syncadapters.contacts  # Contacts sync

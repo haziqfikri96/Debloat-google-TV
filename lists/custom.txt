@@ -1,0 +1,9 @@
+# CUSTOM profile — add your own packages here (one per line), e.g. OEM bloat
+# or streaming apps you never use. Find package names with:
+#   ./gtv.sh packages            (list everything installed)
+#   ./gtv.sh packages netflix    (filter)
+#
+# Examples (uncomment to use):
+# com.netflix.ninja                       # Netflix
+# com.amazon.amazonvideo.livingroom       # Prime Video
+# com.disney.disneyplus                   # Disney+
