@@ -1,0 +1,51 @@
+name: Glass Launcher
+
+on:
+  push:
+    paths: ["glass-launcher/**", ".github/workflows/glass-launcher.yml"]
+  pull_request:
+    paths: ["glass-launcher/**", ".github/workflows/glass-launcher.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: write   # to publish the APK on the "glass-latest" release
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      # The runner image ships the Android SDK with licenses accepted.
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.10.2"
+
+      - name: Test and build release APK
+        run: gradle -p glass-launcher testReleaseUnitTest assembleRelease --no-daemon
+
+      - name: Collect APK
+        run: cp glass-launcher/app/build/outputs/apk/release/app-release.apk glass-launcher.apk
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: glass-launcher
+          path: glass-launcher.apk
+
+      # Fixed download URL used by `./gtv.sh glass`.
+      - name: Publish to the glass-latest release
+        if: github.event_name != 'pull_request'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: glass-latest
+          name: Glass Launcher (latest build)
+          body: |
+            Frosted-glass home screen for Android TV / Google TV.
+            Install from a phone or PC with `./gtv.sh glass`, or sideload `glass-launcher.apk`.
+          files: glass-launcher.apk
+          make_latest: true

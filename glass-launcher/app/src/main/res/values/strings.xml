@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="home_keeper_label">Glass Launcher: open on HOME</string>
+    <string name="home_keeper_description">Opens Glass Launcher when the Google TV home screen appears (HOME button or waking the TV). It only watches which screen opens; it does not read any content.</string>
+</resources>

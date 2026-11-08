@@ -1,0 +1,15 @@
+# AGGRESSIVE profile — applied on top of RECOMMENDED.
+# WARNING: removes Google Assistant voice search, Chromecast built-in,
+# text-to-speech and Live Channels. Only use if you never use these.
+com.google.android.katniss                # Google app for TV (Assistant / voice search)
+com.google.android.speech.pumpkin         # Offline speech recognition
+com.google.android.tts                    # Google text-to-speech
+com.google.android.apps.mediashell        # Chromecast built-in (casting to the TV)
+com.google.android.tv                     # Live Channels app
+com.google.android.tv.frameworkpackagestubs # "Not supported" intent stubs
+com.google.android.apps.tv.dreamx         # Ambient mode AND the Google Home panel (smart home controls) on Google TV
+# Privacy Sandbox / on-device ad modules (re-enable if Play Store or Assistant misbehave)
+com.google.android.adservices.api
+com.google.android.ext.adservices.api
+com.google.android.ondevicepersonalization.services
+com.google.android.federatedcompute
