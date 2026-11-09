@@ -2,7 +2,9 @@
 
 A minimal, fast home screen for Android TV / Google TV with a **frosted-glass** look. It shows translucent cards, soft blur and bright glass edges over a colourful background. It also has accurate **prayer times**, a **Google Home** button, and icons for popular apps that **install only when you ask**.
 
-![Aurora](../docs/glass-aurora.jpg)
+![Clean layout](../docs/glass-clean.jpg)
+
+Your wallpaper comes first: a big clock, the weather and the date float on the photo, next to a compact prayer card and a single glass dock of apps. The weather line ("28° · Hujan · Terasa 33°") comes from [Open-Meteo](https://open-meteo.com/) (free, no account) for your prayer location, and refreshes every 30 minutes.
 
 | Sunset (Malaysia, JAKIM) | Graphite (London, MWL) | Your own photo |
 |---|---|---|
