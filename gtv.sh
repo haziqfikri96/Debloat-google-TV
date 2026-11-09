@@ -775,11 +775,29 @@ suggestions() {
 }
 
 find_file() {
-  local f="$1" d
+  local f="$1" base dir d
   [[ -f "$f" ]] && { echo "$f"; return; }
-  for d in "$HOME/storage/downloads" "$HOME/storage/pictures" /sdcard/Download /sdcard/Pictures /mnt \
+  base="$(basename "$f")"; dir="$(dirname "$f")"
+  for d in "$dir" "$HOME/storage/downloads" "$HOME/storage/pictures" /sdcard/Download /sdcard/Pictures /mnt \
            "$HOME/Downloads" "$HOME/Pictures"; do
-    [[ -f "$d/$(basename "$f")" ]] && { echo "$d/$(basename "$f")"; return; }
+    [[ -d "$d" ]] || continue
+    [[ -f "$d/$base" ]] && { echo "$d/$base"; return; }
+    # iPhone often saves "photo.jpg" as "photo.jpg.JPG", and letter case may differ.
+    local hit; hit="$(match_name "$d" "$base")" && { echo "$hit"; return; }
+  done
+  return 1
+}
+
+# A file in DIR named NAME ignoring case, or NAME plus an extra extension (NAME.JPG).
+match_name() {
+  local dir="$1" want c n
+  want="$(printf '%s' "$2" | tr '[:upper:]' '[:lower:]')"
+  for c in "$dir"/*; do
+    [[ -f "$c" ]] || continue
+    n="$(basename "$c" | tr '[:upper:]' '[:lower:]')"
+    if [[ "$n" == "$want" || ( "$n" == "$want".* && "${n#"$want".}" != *.* ) ]]; then
+      echo "$c"; return 0
+    fi
   done
   return 1
 }
