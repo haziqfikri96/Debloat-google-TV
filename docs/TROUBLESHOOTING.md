@@ -89,6 +89,9 @@ Open the app again, type `gtv` and run the same step again. Nothing breaks if yo
 ### `Download failed` when installing Glass
 The device can't reach GitHub. Check its internet, turn off any VPN, and try again. Or download `glass-launcher.apk` from the [Releases page](https://github.com/haziqfikri96/Debloat-google-TV/releases/tag/glass-latest) into your **Downloads** folder and run `gtv glass` again. It finds the file there.
 
+### `gtv install` says the app "is already installed from another source"
+The TV has a copy signed by someone else (for example the Play Store version), so Android refuses to update it in place. `gtv` never deletes it for you. If you don't need that copy's data, remove it with `gtv uninstall <package>` and install again. Apps with a different package name (like Nuvio from GitHub, `com.nuvio.tv`, and from the Play Store, `com.nuvio.app`) install side by side.
+
 ### `Image not found` for a wallpaper
 Give the exact file name. In iSH run `ls /mnt` to see it (iPhones sometimes add a second ending, e.g. `.jpg.JPG`; `gtv` already allows that). On Android the photo must be in **Downloads** or **Pictures**.
 
