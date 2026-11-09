@@ -19,6 +19,25 @@ import android.view.accessibility.AccessibilityEvent;
 public class HomeKeeperService extends AccessibilityService {
 
     private long lastLaunch;
+    private static HomeKeeperService running;
+
+    @Override
+    protected void onServiceConnected() {
+        super.onServiceConnected();
+        running = this;
+    }
+
+    @Override
+    public void onDestroy() {
+        if (running == this) running = null;
+        super.onDestroy();
+    }
+
+    /** Opens the TV's power menu. False when this service is not turned on. */
+    static boolean showPowerMenu() {
+        HomeKeeperService s = running;
+        return s != null && s.performGlobalAction(GLOBAL_ACTION_POWER_DIALOG);
+    }
 
     @Override
     public void onAccessibilityEvent(AccessibilityEvent e) {

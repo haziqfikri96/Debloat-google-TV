@@ -48,6 +48,25 @@ It also checks that the TV's clock and time zone are correct, because a wrong TV
   - **Hide from Home:** keeps an app installed but off your screen, which is handy for Settings-type tiles you can't uninstall. **Show hidden apps** brings them all back.
   - **App info.**
 
+## Shortcuts
+
+A glass bar at the top right has six icons. The one you're on lights up and shows its name.
+
+| Icon | What it does |
+|---|---|
+| Rocket · **Boost** | Closes apps left idling in the background and shows how much memory came free. Music that is playing keeps playing. |
+| Note · **Spotify** | Opens Spotify (or another music app, or Spotify's Play Store page if you don't have it). |
+| Wi-Fi | Opens the TV's network settings. |
+| Palette · **Style** | Switches the look (Photo, Sunset, Graphite…). |
+| Gear · **Settings** | Opens the TV's settings. |
+| Power | Opens the TV's own power menu (sleep, restart, off). Needs the HOME helper that `gtv glass` turns on. |
+
+## Now playing
+
+When Spotify is playing (or any app playing music), a floating glass card appears under the date. It shows the cover, song, artist and progress, with previous / play-pause / next buttons. It works when you start Spotify from your phone (Spotify Connect) too. Long-press OK on a button to open the app. The card hides when nothing is playing.
+
+It sits on the home screen only, so it never covers a video. `gtv glass` gives Glass access to "now playing" information (media sessions). It reads no notifications.
+
 ## StandBy clock
 
 A screensaver with a big clock on black, the date and Hijri date, and the next prayer with a countdown. It works offline from the cached prayer timetable. It drifts a little every minute so nothing burns into the screen, and it turns dim red between 11 pm and 5 am. `gtv glass` turns it on, and `gtv screensaver off` turns it off.
