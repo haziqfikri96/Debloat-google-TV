@@ -66,7 +66,12 @@ import java.util.concurrent.Executors;
  */
 public class HomeActivity extends Activity {
 
-    private static final int COLUMNS = 5;
+    /** 5 columns in the Classic layout, a 7-tile dock in the Clean one. */
+    private int columns = 5;
+    /** Clean layout: wallpaper first, clock on the photo, one glass dock (default). */
+    private boolean clean = true;
+    private Weather weather;
+    private TextView weatherLine;
 
     /**
      * Popular apps shown as icons even when not installed. Nothing is installed
@@ -98,7 +103,7 @@ public class HomeActivity extends Activity {
 
     // glass pop-up menu (drawn inside this window so the glass lines up)
     private FrameLayout menuLayer;
-    private LinearLayout content;   // everything behind a menu
+    private ViewGroup content;      // everything behind a menu
     private boolean startedOnce;
     private View focusBeforeMenu;
     private GlassFrame inputsPill;
@@ -126,7 +131,10 @@ public class HomeActivity extends Activity {
                 android.view.WindowManager.LayoutParams.FLAG_FULLSCREEN);
         prefs = getSharedPreferences("glass", MODE_PRIVATE);
         prayer = new Prayer(this);
+        weather = new Weather(this);
         handleConfig(getIntent());
+        clean = !"classic".equals(prefs.getString("layout", "clean"));
+        columns = clean ? 7 : 5;
         buildUi();
         loadTheme(pickTheme());
         loadApps();
@@ -175,6 +183,11 @@ public class HomeActivity extends Activity {
     protected void onNewIntent(Intent intent) {
         super.onNewIntent(intent);
         if (handleConfig(intent)) {
+            boolean wantClean = !"classic".equals(prefs.getString("layout", "clean"));
+            if (wantClean != clean) {
+                recreate();
+                return;
+            }
             refreshPrayer();
             loadApps();
             return;
@@ -195,6 +208,9 @@ public class HomeActivity extends Activity {
         if (b.containsKey("homePanel")) {
             String c = b.getString("homePanel");
             if (c == null || c.isEmpty()) e.remove("homePanel"); else e.putString("homePanel", c);
+        }
+        if (b.containsKey("layout")) {
+            e.putString("layout", "classic".equals(b.getString("layout")) ? "classic" : "clean");
         }
         if (b.containsKey("suggestions")) {
             String s = b.getString("suggestions", "on");
@@ -249,14 +265,119 @@ public class HomeActivity extends Activity {
     }
 
     private void buildUi() {
+        final android.graphics.Paint shade = new android.graphics.Paint();
         root = new FrameLayout(this) {
             @Override protected void dispatchDraw(Canvas c) {
                 Glass.drawBackground(c, this);
+                if (clean) {
+                    // Darken the top and bottom a little so text and dock stay readable on any photo.
+                    int w = getWidth(), h = getHeight();
+                    shade.setShader(new android.graphics.LinearGradient(0, 0, 0, h,
+                            new int[]{0x73000000, 0x00000000, 0x00000000, 0x8C000000},
+                            new float[]{0f, 0.38f, 0.62f, 1f}, android.graphics.Shader.TileMode.CLAMP));
+                    c.drawRect(0, 0, w, h, shade);
+                }
                 super.dispatchDraw(c);
             }
         };
         root.setWillNotDraw(false);
+        if (clean) buildClean(); else buildClassic();
+        setContentView(root);
+        grid.requestFocus();
+    }
 
+    /** Clean layout: clock on the wallpaper, compact prayer card, a single glass dock. */
+    private void buildClean() {
+        FrameLayout stage = new FrameLayout(this);
+        stage.setClipChildren(false);
+        content = stage;
+        root.addView(stage, new FrameLayout.LayoutParams(-1, -1));
+
+        // --- top left: big clock, weather, date (no card: it floats on the photo)
+        LinearLayout info = new LinearLayout(this);
+        info.setOrientation(LinearLayout.VERTICAL);
+        time = text(72, 255, false);
+        time.setShadowLayer(dp(14), 0, dp(2), 0x99000000);
+        weatherLine = text(19, 245, true);
+        weatherLine.setPadding(dp(2), dp(10), 0, 0);
+        weatherLine.setShadowLayer(dp(8), 0, dp(1), 0x99000000);
+        date = text(15, 225, false);
+        date.setPadding(dp(2), dp(8), 0, 0);
+        hijri = text(13, 190, false);
+        hijri.setPadding(dp(2), dp(4), 0, 0);
+        info.addView(time);
+        info.addView(weatherLine);
+        info.addView(date);
+        info.addView(hijri);
+        FrameLayout.LayoutParams ilp = new FrameLayout.LayoutParams(-2, -2, Gravity.TOP | Gravity.START);
+        ilp.setMargins(dp(48), dp(24), 0, 0);
+        stage.addView(info, ilp);
+
+        // --- top right: small glass buttons
+        LinearLayout bar = new LinearLayout(this);
+        bar.setOrientation(LinearLayout.HORIZONTAL);
+        bar.setClipChildren(false);
+        addButtons(bar, true);
+        FrameLayout.LayoutParams blp = new FrameLayout.LayoutParams(-2, -2, Gravity.TOP | Gravity.END);
+        blp.setMargins(0, dp(28), dp(48), 0);
+        stage.addView(bar, blp);
+
+        // --- right: compact prayer card
+        GlassFrame card = buildPrayerCardCompact();
+        FrameLayout.LayoutParams clp = new FrameLayout.LayoutParams(dp(220), -2, Gravity.TOP | Gravity.END);
+        clp.setMargins(0, dp(84), dp(48), 0);
+        stage.addView(card, clp);
+
+        // --- bottom: one glass dock of apps (Down scrolls to the next row)
+        GlassFrame dock = new GlassFrame(this, 24, 1f);
+        dock.setClipChildren(true);
+        makeGrid(dp(14), dp(16), dp(40));
+        dock.addView(grid, new FrameLayout.LayoutParams(-1, -1));
+        FrameLayout.LayoutParams dlp = new FrameLayout.LayoutParams(-1, dp(98), Gravity.BOTTOM);
+        dlp.setMargins(dp(40), 0, dp(40), dp(22));
+        stage.addView(dock, dlp);
+    }
+
+    /** The glass buttons: Inputs, Google Home, Style (long-press: layout), Settings. */
+    private void addButtons(LinearLayout bar, boolean small) {
+        inputsPill = small ? pillSmall("Inputs") : pill("Inputs");
+        inputsPill.setOnClickListener(v -> showInputs());
+        inputsPill.setVisibility(passthroughInputs().isEmpty() ? View.GONE : View.VISIBLE);
+        bar.addView(inputsPill, pillParams(small));
+
+        GlassFrame home = small ? pillSmall("Google Home") : pill("Google Home");
+        home.setOnClickListener(v -> openGoogleHome());
+        bar.addView(home, pillParams(small));
+
+        GlassFrame style = small ? pillSmall("Style") : pill("Style");
+        styleLabel = (TextView) style.getChildAt(0);
+        style.setOnClickListener(v -> cycleTheme());
+        style.setOnLongClickListener(v -> {
+            styleMenu();
+            return true;
+        });
+        bar.addView(style, pillParams(small));
+
+        GlassFrame settings = small ? pillSmall("Settings") : pill("Settings");
+        settings.setOnClickListener(v -> launch(new Intent(Settings.ACTION_SETTINGS)));
+        bar.addView(settings, pillParams(small));
+    }
+
+    private void styleMenu() {
+        List<String> labels = new ArrayList<>();
+        List<Runnable> actions = new ArrayList<>();
+        labels.add("Next wallpaper style");
+        actions.add(this::cycleTheme);
+        labels.add(clean ? "Classic layout (big app grid)" : "Clean layout (wallpaper + dock)");
+        actions.add(() -> {
+            prefs.edit().putString("layout", clean ? "classic" : "clean").apply();
+            recreate();
+        });
+        showMenu("Style", null, labels, actions);
+    }
+
+    /** Classic layout: clock + prayer cards on top, big glass grid of apps. */
+    private void buildClassic() {
         // 5% TV overscan-safe margins.
         LinearLayout column = new LinearLayout(this);
         content = column;
@@ -307,23 +428,7 @@ public class HomeActivity extends Activity {
         title.setPadding(dp(6), 0, 0, 0);
         bar.addView(title, new LinearLayout.LayoutParams(0, -2, 1f));
 
-        inputsPill = pill("Inputs");
-        inputsPill.setOnClickListener(v -> showInputs());
-        inputsPill.setVisibility(passthroughInputs().isEmpty() ? View.GONE : View.VISIBLE);
-        bar.addView(inputsPill, pillParams());
-
-        GlassFrame home = pill("Google Home");
-        home.setOnClickListener(v -> openGoogleHome());
-        bar.addView(home, pillParams());
-
-        GlassFrame style = pill("Style");
-        styleLabel = (TextView) style.getChildAt(0);
-        style.setOnClickListener(v -> cycleTheme());
-        bar.addView(style, pillParams());
-
-        GlassFrame settings = pill("Settings");
-        settings.setOnClickListener(v -> launch(new Intent(Settings.ACTION_SETTINGS)));
-        bar.addView(settings, pillParams());
+        addButtons(bar, false);
 
         // --- apps panel: one big glass sheet holding a grid of glass tiles
         GlassFrame sheet = new GlassFrame(this, 28, 1f);
@@ -333,12 +438,18 @@ public class HomeActivity extends Activity {
         sheetLp.bottomMargin = dp(27);
         column.addView(sheet, sheetLp);
 
+        makeGrid(dp(18), dp(22), dp(18));
+        sheet.addView(grid, new FrameLayout.LayoutParams(-1, -1));
+    }
+
+    /** The app grid (shared by both layouts). */
+    private void makeGrid(int spacing, int padding, int rowSpacing) {
         grid = new GridView(this);
-        grid.setNumColumns(COLUMNS);
+        grid.setNumColumns(columns);
         grid.setStretchMode(GridView.STRETCH_COLUMN_WIDTH);
-        grid.setHorizontalSpacing(dp(18));
-        grid.setVerticalSpacing(dp(18));
-        grid.setPadding(dp(22), dp(22), dp(22), dp(22));
+        grid.setHorizontalSpacing(spacing);
+        grid.setVerticalSpacing(rowSpacing);
+        grid.setPadding(padding, padding, padding, padding);
         grid.setClipToPadding(false);
         grid.setClipChildren(false);
         grid.setSelector(new android.graphics.drawable.ColorDrawable(Color.TRANSPARENT));
@@ -366,10 +477,6 @@ public class HomeActivity extends Activity {
             @Override public void onScrollStateChanged(AbsListView v, int s) {}
             @Override public void onScroll(AbsListView v, int first, int count, int total) { GlassFrame.invalidateTree(v); }
         });
-        sheet.addView(grid, new FrameLayout.LayoutParams(-1, -1));
-
-        setContentView(root);
-        grid.requestFocus();
     }
 
     /**
@@ -394,9 +501,20 @@ public class HomeActivity extends Activity {
         return f;
     }
 
-    private LinearLayout.LayoutParams pillParams() {
+    private GlassFrame pillSmall(String label) {
+        GlassFrame f = new GlassFrame(this, 18, 1.08f);
+        f.setFocusable(true);
+        f.setClickable(true);
+        TextView t = text(13, 240, true);
+        t.setText(label);
+        t.setPadding(dp(14), dp(8), dp(14), dp(8));
+        f.addView(t);
+        return f;
+    }
+
+    private LinearLayout.LayoutParams pillParams(boolean small) {
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-2, -2);
-        lp.leftMargin = dp(14);
+        lp.leftMargin = dp(small ? 8 : 14);
         return lp;
     }
 
@@ -410,8 +528,37 @@ public class HomeActivity extends Activity {
 
     private void updateClock() {
         Date now = new Date();
-        time.setText(DateFormat.getTimeFormat(this).format(now));
-        date.setText(DateFormat.format("EEEE, d MMMM", now).toString().toUpperCase(Locale.getDefault()));
+        if (clean) {
+            time.setText(DateFormat.format(DateFormat.is24HourFormat(this) ? "HH:mm" : "h:mm", now));
+            date.setText(DateFormat.format("EEEE, d MMMM yyyy", now));
+        } else {
+            time.setText(DateFormat.getTimeFormat(this).format(now));
+            date.setText(DateFormat.format("EEEE, d MMMM", now).toString().toUpperCase(Locale.getDefault()));
+        }
+        if (weatherLine != null) {
+            String w = weather.line();
+            weatherLine.setText(w);
+            weatherLine.setVisibility(w == null ? View.GONE : View.VISIBLE);
+            if (weather.stale()) refreshWeather();
+        }
+    }
+
+    private boolean weatherBusy;
+
+    private void refreshWeather() {
+        if (weatherBusy) return;
+        weatherBusy = true;
+        worker.execute(() -> {
+            weather.refresh(prayer.location(), prayer.malay());
+            ui.post(() -> {
+                weatherBusy = false;
+                String w = weather.line();
+                if (weatherLine != null && w != null) {
+                    weatherLine.setText(w);
+                    weatherLine.setVisibility(View.VISIBLE);
+                }
+            });
+        });
     }
 
     // --------------------------------------------------------------- prayer --
@@ -479,6 +626,65 @@ public class HomeActivity extends Activity {
         return card;
     }
 
+    /** Clean layout: a narrow glass card with the six times as rows and the next prayer below. */
+    private GlassFrame buildPrayerCardCompact() {
+        GlassFrame card = new GlassFrame(this, 20, 1f);
+        LinearLayout body = new LinearLayout(this);
+        body.setOrientation(LinearLayout.VERTICAL);
+        body.setPadding(dp(12), dp(10), dp(12), dp(10));
+        body.setClipChildren(false);
+        card.addView(body, new FrameLayout.LayoutParams(-1, -2));
+
+        prayerSource = text(11, 200, true);
+        oneLine(prayerSource);
+        prayerSource.setPadding(dp(4), 0, 0, dp(8));
+        body.addView(prayerSource);
+
+        for (int i = 0; i < 6; i++) {
+            GlassFrame chip = new GlassFrame(this, 10, 1f);
+            LinearLayout row = new LinearLayout(this);
+            row.setOrientation(LinearLayout.HORIZONTAL);
+            row.setGravity(Gravity.CENTER_VERTICAL);
+            row.setPadding(dp(9), dp(4), dp(9), dp(4));
+            chipName[i] = text(12, 225, false);
+            oneLine(chipName[i]);
+            chipTime[i] = text(12, 245, true);
+            oneLine(chipTime[i]);
+            row.addView(chipName[i], new LinearLayout.LayoutParams(0, -2, 1f));
+            row.addView(chipTime[i], new LinearLayout.LayoutParams(-2, -2));
+            chip.addView(row, new FrameLayout.LayoutParams(-1, -2));
+            chips[i] = chip;
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, -2);
+            lp.topMargin = dp(i == 0 ? 0 : 3);
+            body.addView(chip, lp);
+        }
+
+        // Next prayer: "Seterusnya: Zohor" / "1:00  dalam 4j 9m"
+        nextLabel = text(12, 230, true);
+        oneLine(nextLabel);
+        nextLabel.setPadding(dp(4), dp(10), dp(4), 0);
+        body.addView(nextLabel);
+        LinearLayout next = new LinearLayout(this);
+        next.setOrientation(LinearLayout.HORIZONTAL);
+        next.setGravity(Gravity.CENTER_VERTICAL);
+        next.setPadding(dp(4), dp(4), dp(4), 0);
+        nextTime = text(16, 255, true);
+        nextIn = text(12, 210, false);
+        nextIn.setPadding(dp(8), 0, 0, 0);
+        oneLine(nextIn);
+        next.addView(nextTime);
+        next.addView(nextIn);
+        body.addView(next);
+
+        prayerHint = text(13, 220, false);
+        prayerHint.setGravity(Gravity.CENTER);
+        prayerHint.setPadding(dp(14), dp(14), dp(14), dp(14));
+        prayerHint.setText("Prayer times: set your location from your phone (gtv → p)");
+        card.addView(prayerHint, new FrameLayout.LayoutParams(-1, -2, Gravity.CENTER));
+        prayerBody = body;
+        return card;
+    }
+
     /** Recomputes the day's times (and downloads JAKIM data when needed) off the UI thread. */
     private void refreshPrayer() {
         worker.execute(() -> {
@@ -486,6 +692,7 @@ public class HomeActivity extends Activity {
             ui.post(() -> {
                 todayKey = -1;
                 updatePrayerCard();
+                if (weatherLine != null) refreshWeather();
             });
         });
     }
@@ -522,7 +729,7 @@ public class HomeActivity extends Activity {
         }
 
         for (int i = 0; i < 6; i++) {
-            chipName[i].setText(names[i].toUpperCase(Locale.getDefault()));
+            chipName[i].setText(clean ? names[i] : names[i].toUpperCase(Locale.getDefault()));
             chipTime[i].setText(fmtShort(today.minutes[i]));
             chips[i].setHighlighted(i == (current >= 0 ? current : next));
         }
@@ -537,10 +744,19 @@ public class HomeActivity extends Activity {
             nextLabel.setText((today.malay ? "SETERUSNYA · " : "NEXT · ") + name.toUpperCase(Locale.getDefault()));
             nextTime.setText(target >= 0 ? fmt(target) : "--");
             int left = next >= 0 ? target - nowMin : target + 24 * 60 - nowMin;
-            nextIn.setText((today.malay ? "dalam " : "in ") + (left >= 60 ? left / 60 + "h " : "") + left % 60 + "m");
+            nextIn.setText((today.malay ? "dalam " : "in ") + (left >= 60 ? left / 60 + (today.malay ? "j " : "h ") : "") + left % 60 + "m");
         }
         String place = prayer.placeLabel();
-        prayerSource.setText((place.isEmpty() ? "" : place + "  ·  ") + today.source);
+        if (clean) {
+            prayerSource.setText((today.malay ? "Waktu Solat" : "Prayer times") + (place.isEmpty() ? "" : "  ·  " + place));
+            if (current < 0) {
+                int target = next >= 0 ? today.minutes[next] : (tomorrow != null ? tomorrow.minutes[0] : -1);
+                nextLabel.setText((today.malay ? "Seterusnya: " : "Next: ") + (next >= 0 ? names[next] : names[0]));
+                nextTime.setText(target >= 0 ? fmtShort(target) : "--");
+            }
+        } else {
+            prayerSource.setText((place.isEmpty() ? "" : place + "  ·  ") + today.source);
+        }
     }
 
     /** "5:48" / "17:48": compact form for the small chips. */
@@ -846,8 +1062,8 @@ public class HomeActivity extends Activity {
         switch (e.getKeyCode()) {
             case KeyEvent.KEYCODE_DPAD_LEFT: target = pos - 1; break;
             case KeyEvent.KEYCODE_DPAD_RIGHT: target = pos + 1; break;
-            case KeyEvent.KEYCODE_DPAD_UP: target = pos - COLUMNS; break;
-            case KeyEvent.KEYCODE_DPAD_DOWN: target = pos + COLUMNS; break;
+            case KeyEvent.KEYCODE_DPAD_UP: target = pos - columns; break;
+            case KeyEvent.KEYCODE_DPAD_DOWN: target = pos + columns; break;
             case KeyEvent.KEYCODE_DPAD_CENTER:
             case KeyEvent.KEYCODE_ENTER:
             case KeyEvent.KEYCODE_BACK:
@@ -1021,8 +1237,8 @@ public class HomeActivity extends Activity {
         final GradientDrawable dot = new GradientDrawable();
 
         Tile() {
-            super(HomeActivity.this, 16, 1.1f);
-            final float r = dp(11);
+            super(HomeActivity.this, clean ? 12 : 16, 1.1f);
+            final float r = dp(clean ? 8 : 11);
             banner.setScaleType(ImageView.ScaleType.CENTER_CROP);
             banner.setOutlineProvider(new ViewOutlineProvider() {
                 @Override public void getOutline(View v, Outline o) {
@@ -1031,7 +1247,7 @@ public class HomeActivity extends Activity {
             });
             banner.setClipToOutline(true);
             FrameLayout.LayoutParams blp = new FrameLayout.LayoutParams(-1, -1);
-            int inset = dp(5);
+            int inset = dp(clean ? 3 : 5);
             blp.setMargins(inset, inset, inset, inset);
             addView(banner, blp);
 
@@ -1040,11 +1256,14 @@ public class HomeActivity extends Activity {
             iconFrame.addView(icon, new FrameLayout.LayoutParams(-1, -1));
             initial.setGravity(Gravity.CENTER);
             iconFrame.addView(initial, new FrameLayout.LayoutParams(-1, -1));
-            iconBox.addView(iconFrame, new LinearLayout.LayoutParams(dp(44), dp(44)));
+            int iconSize = clean ? dp(28) : dp(44);
+            iconBox.addView(iconFrame, new LinearLayout.LayoutParams(iconSize, iconSize));
             label.setGravity(Gravity.CENTER);
             oneLine(label);
             label.setEllipsize(TextUtils.TruncateAt.END);
-            label.setPadding(dp(8), dp(8), dp(8), 0);
+            if (clean) label.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11);
+            label.setPadding(dp(6), dp(clean ? 4 : 8), dp(6), 0);
+            if (clean) initial.setTextSize(TypedValue.COMPLEX_UNIT_SP, 15);
             iconBox.addView(label, new LinearLayout.LayoutParams(-1, -2));
             addView(iconBox, new FrameLayout.LayoutParams(-1, -1));
 
@@ -1052,14 +1271,15 @@ public class HomeActivity extends Activity {
 
             // Small glass "Get" pill for apps that aren't installed.
             badge.setText("Get");
-            badge.setPadding(dp(9), dp(3), dp(9), dp(3));
+            badge.setPadding(dp(clean ? 6 : 9), dp(clean ? 1 : 3), dp(clean ? 6 : 9), dp(clean ? 1 : 3));
+            if (clean) badge.setTextSize(TypedValue.COMPLEX_UNIT_SP, 9);
             GradientDrawable pillBg = new GradientDrawable();
             pillBg.setCornerRadius(dp(10));
             pillBg.setColor(0x55FFFFFF);
             pillBg.setStroke(Math.max(1, dp(1)), 0x99FFFFFF);
             badge.setBackground(pillBg);
             FrameLayout.LayoutParams bl = new FrameLayout.LayoutParams(-2, -2, Gravity.TOP | Gravity.END);
-            bl.setMargins(0, dp(9), dp(9), 0);
+            bl.setMargins(0, dp(clean ? 4 : 9), dp(clean ? 4 : 9), 0);
             addView(badge, bl);
         }
 

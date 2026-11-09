@@ -93,7 +93,7 @@ final class Prayer {
         return prefs.contains("lat") || lastKnownLocation() != null;
     }
 
-    private double[] location() {
+    double[] location() {
         if (prefs.contains("lat")) return new double[]{prefs.getFloat("lat", 0), prefs.getFloat("lng", 0)};
         Location l = lastKnownLocation();
         return l == null ? null : new double[]{l.getLatitude(), l.getLongitude()};
@@ -134,7 +134,7 @@ final class Prayer {
         return prefs.getString("zone", null);
     }
 
-    private boolean malay() {
+    boolean malay() {
         String lang = prefs.getString("lang", null);
         if (lang != null) return lang.equals("ms") || lang.equals("id");
         String sys = Locale.getDefault().getLanguage();
