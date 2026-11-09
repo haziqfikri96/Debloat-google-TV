@@ -537,6 +537,17 @@ wallpaper() {
 # Tiny JSON helpers (no jq on a stock Termux / macOS).
 json_num() { grep -o "\"$1\":[ ]*-\?[0-9.]*" | head -n1 | sed 's/.*:[ ]*//'; }
 json_str() { grep -o "\"$1\":[ ]*\"[^\"]*\"" | head -n1 | sed 's/.*:[ ]*"//; s/"$//'; }
+# Town or city at LAT LNG (OpenStreetMap Nominatim), or nothing when offline.
+place_name() {
+  command -v curl >/dev/null || return 0
+  local j k v
+  j="$(curl -fsS --max-time 15 -A "gtv-debloat-google-tv" \
+    "https://nominatim.openstreetmap.org/reverse?format=json&zoom=12&lat=$1&lon=$2" 2>/dev/null || true)"
+  for k in city town suburb municipality county village; do
+    v="$(json_str "$k" <<<"$j")"
+    [[ -n "$v" ]] && { echo "$v"; return 0; }
+  done
+}
 urlencode() { local s="$1" out="" c i; for ((i = 0; i < ${#s}; i++)); do c="${s:i:1}"
   case "$c" in [a-zA-Z0-9.~_-]) out+="$c" ;; ' ') out+="%20" ;; *) out+="$(printf '%%%02X' "'$c")" ;; esac; done; echo "$out"; }
 
@@ -636,7 +647,6 @@ prayer() {
     local j; j="$(termux-location -p gps -r once 2>/dev/null || termux-location -p network -r once 2>/dev/null || true)"
     lat="$(json_num latitude <<<"$j")"; lng="$(json_num longitude <<<"$j")"
     [[ -n "$lat" && -n "$lng" ]] || die "Could not read the phone's location. Is Location turned on?"
-    name="${name:-My location}"
   elif [[ "$where" =~ ^(-?[0-9]+\.?[0-9]*)[,\ ]+(-?[0-9]+\.?[0-9]*)$ ]]; then
     lat="${BASH_REMATCH[1]}"; lng="${BASH_REMATCH[2]}"
   elif [[ -n "$where" ]]; then
@@ -648,6 +658,12 @@ prayer() {
     local found country; found="$(json_str name <<<"$j")"; country="$(json_str country <<<"$j")"
     name="${name:-$found}"
     ok "Found $found${country:+, $country} ($lat, $lng)"
+  fi
+
+  # Coordinates only: name the place (shown on the prayer card) from OpenStreetMap.
+  if [[ -n "$lat" && -z "$name" ]]; then
+    name="$(place_name "$lat" "$lng")"
+    [[ -n "$name" ]] && ok "Location: $name" || name="My location"
   fi
 
   # Time zone of the place (to check the TV's), when the lookup didn't give one.

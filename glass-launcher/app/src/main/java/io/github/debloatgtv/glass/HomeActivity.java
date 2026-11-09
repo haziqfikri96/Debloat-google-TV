@@ -183,6 +183,7 @@ public class HomeActivity extends Activity {
         super.onNewIntent(intent);
         if (handleConfig(intent)) {
             refreshPrayer();
+            refreshWeather();
             loadApps();
             return;
         }
@@ -198,6 +199,7 @@ public class HomeActivity extends Activity {
         Bundle b = i.getExtras();
         if (b == null) return true;
         prayer.configure(b);
+        if (weather != null) weather.invalidate(); // new place or language
         SharedPreferences.Editor e = prefs.edit();
         if (b.containsKey("homePanel")) {
             String c = b.getString("homePanel");

@@ -30,6 +30,11 @@ final class Weather {
         return prefs.getString("line", null);
     }
 
+    /** Location or language changed: fetch again on the next refresh. */
+    void invalidate() {
+        prefs.edit().putLong("at", 0).apply();
+    }
+
     boolean stale() {
         return System.currentTimeMillis() - prefs.getLong("at", 0) > MAX_AGE;
     }
