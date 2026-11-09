@@ -57,6 +57,7 @@ Debloat Google TV   TV: 192.168.1.50:5555
   p) Prayer times location
   h) Google Home control
   u) Remove apps (pick by number)
+  i) Install an app (APK file, link, or nuvio)
   b) Bring back removed apps
   6) Other launcher (APK or package)
   7) Bring back stock home screen
@@ -96,6 +97,7 @@ See [glass-launcher/README.md](glass-launcher/README.md) for all the features an
 | `google-home` | Sets up the Google Home button and restores Assistant/casting if they were debloated |
 | `suggestions on\|off\|reset` | Icons for popular apps you haven't installed (installed only when you select them) |
 | `apps` | Numbered list of the apps on your home screen. Type the numbers to remove (menu **u**) |
+| `install <apk\|link\|nuvio\|github:OWNER/REPO>` | Installs an APK file, a download link, or the newest stable release of a GitHub project. It picks the file that fits your TV's processor and never uninstalls anything. Example: `gtv install nuvio` installs the official [Nuvio TV](https://github.com/NuvioMedia/NuvioTV) release (newer than the Play Store one) |
 | `bring-back [pkg]` | Numbered list of apps `gtv` removed. Pick the ones to bring back (menu **b**) |
 | `recheck` | Removes again any app that came back after a reboot or update (`status` shows them) |
 | `screensaver on\|off` | Glass StandBy clock: a big clock, Hijri date and next prayer, burn-in safe |

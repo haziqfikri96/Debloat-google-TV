@@ -321,6 +321,57 @@ tweaks() {
   info "Done. Reboot to apply everything: ./gtv.sh reboot"
 }
 
+# The APK in the latest stable GitHub release of OWNER/REPO that fits this TV's processor.
+github_apk_url() {
+  local repo="$1" json tag abis abi u
+  local -a urls=()
+  command -v curl >/dev/null || die "curl not found"
+  json="$(curl -fsSL --max-time 30 -H 'Accept: application/vnd.github+json' \
+    "https://api.github.com/repos/$repo/releases/latest" 2>/dev/null)" \
+    || die "Could not read the latest release of $repo from GitHub. Check the internet, or give a direct link: gtv install https://...apk"
+  tag="$(json_str tag_name <<<"$json")"
+  mapfile -t urls <<<"$(grep -o '"browser_download_url": *"[^"]*\.apk"' <<<"$json" | sed 's/.*: *"//; s/"$//')"
+  [[ -n "${urls[0]:-}" ]] || die "The latest release of $repo (${tag:-?}) has no APK file."
+  abis="$(q_ getprop ro.product.cpu.abilist 2>/dev/null || true)"
+  info "$repo ${tag:-latest}; this TV runs: ${abis:-unknown}" >&2
+  for abi in ${abis//,/ }; do
+    for u in "${urls[@]}"; do [[ "$u" == *"$abi"* ]] && { echo "$u"; return; }; done
+  done
+  for u in "${urls[@]}"; do [[ "$u" == *universal* ]] && { echo "$u"; return; }; done
+  (( ${#urls[@]} == 1 )) && { echo "${urls[0]}"; return; }
+  printf '    %s\n' "${urls[@]}" >&2
+  die "Several APK files and none fits this TV by name. Pick one above and run: gtv install <link>"
+}
+
+# gtv install <file.apk | https://link.apk | nuvio | github:OWNER/REPO>
+install_app() {
+  local src="${1:-}" apk url size
+  [[ -n "$src" ]] || die "Usage: ./gtv.sh install <file.apk | https://link-to.apk | nuvio | github:OWNER/REPO>"
+  require_device
+  [[ "$src" == nuvio ]] && src="github:NuvioMedia/NuvioTV"
+  if [[ "$src" == github:* ]]; then
+    url="$(github_apk_url "${src#github:}")"
+  elif [[ "$src" == https://* ]]; then
+    url="$src"
+  else
+    apk="$(find_file "$src")" || die "File not found: $src (looked here, in Downloads and Pictures)"
+  fi
+  if [[ -n "${url:-}" ]]; then
+    command -v curl >/dev/null || die "curl not found"
+    mkdir -p "$ROOT/.cache"
+    apk="$ROOT/.cache/$(basename "${url%%\?*}")"
+    [[ "$apk" == *.apk ]] || apk="$apk.apk"
+    info "Downloading $(basename "$apk") from $(sed 's#^https://##; s#/.*##' <<<"$url")"
+    curl -fL --retry 3 -o "$apk.part" "$url" || die "Download failed: $url"
+    mv "$apk.part" "$apk"
+  fi
+  size="$(du -h "$apk" | cut -f1)"
+  info "Installing $(basename "$apk") ($size) on the TV"
+  if (( DRY_RUN )); then printf '    [dry-run] adb install -r %s\n' "$apk"; return 0; fi
+  install_apk "$apk" safe
+  ok "Installed. Find it in the app list on the TV (Glass shows it in the dock)."
+}
+
 # Restart the TV. adb can hang once the TV drops the connection, so give it a few
 # seconds and then move on (the TV restarts either way).
 reboot_tv() {
@@ -404,6 +455,7 @@ downloaded_apks() {
 
 # adb install, retrying after uninstall if an old copy was signed differently.
 install_apk() {
+  # install_apk FILE [safe]: "safe" never uninstalls an installed copy (no data loss).
   local out pkg
   out="$(adb_ install -r "$1" 2>&1 || true)"
   [[ "$out" == *Success* ]] && return 0
@@ -420,6 +472,11 @@ install_apk() {
     done
     out="$(adb_ install -r "$1" 2>&1 || true)"
     [[ "$out" == *Success* ]] && return 0
+  fi
+  if [[ "${2:-}" == safe && ( "$out" == *UPDATE_INCOMPATIBLE* || "$out" == *INCONSISTENT_CERTIFICATES* ) ]]; then
+    pkg="$(sed -n 's/.*Package \([a-zA-Z0-9_.]*\) signatures.*/\1/p' <<<"$out" | head -n1)"
+    die "${pkg:-This app} is already installed from another source (different signature), so it can't be updated in place.
+       To switch, remove the old one first (this deletes its data):  gtv uninstall ${pkg:-<package>}   then run this again."
   fi
   if [[ "$out" == *UPDATE_INCOMPATIBLE* || "$out" == *INCONSISTENT_CERTIFICATES* ]]; then
     pkg="$(sed -n 's/.*Package \([a-zA-Z0-9_.]*\) signatures.*/\1/p' <<<"$out" | head -n1)"
@@ -1166,6 +1223,7 @@ menu() {
       "p) Prayer times location" \
       "h) Google Home control" \
       "u) Remove apps (pick by number)" \
+      "i) Install an app (APK file, link, or nuvio)" \
       "b) Bring back removed apps" \
       "6) Other launcher (APK or package)" \
       "7) Bring back stock home screen" \
@@ -1207,6 +1265,8 @@ menu() {
            [[ -n "$p" ]] && { ( prayer "$p" ) || true; } ;;
       h|H) ( google_home ) || true ;;
       u|U) ( apps ) || true ;;
+      i|I) read -r -p "APK file name, https link, or nuvio (Enter = back): " p
+           [[ -n "$p" ]] && { ( install_app "$p" ) || true; } ;;
       b|B) ( bring_back ) || true ;;
       w|W) read -r -p "Photo file name in Downloads/Pictures (or full path), or 'remove': " p
            [[ "$p" == remove ]] && p=--remove
@@ -1348,6 +1408,8 @@ Commands
   packages [filter]      List installed packages
   apps                   Numbered list of home-screen apps; pick numbers to remove
   get <package>          Open an app's Play Store page on the TV (e.g. gtv get perfect)
+  install <apk|link|nuvio|github:OWNER/REPO>
+                         Install an APK file, a download link, or the newest release of a GitHub project
   uninstall <pkg>...     Remove apps (preinstalled ones reversibly, like debloat)
   reboot                 Reboot the TV
 EOF
@@ -1393,6 +1455,7 @@ case "$cmd" in
   uninstall)      uninstall_apps "$@" ;;
   apps)           apps ;;
   get)            get_app "$@" ;;
+  install)        install_app "$@" ;;
   recheck)        recheck ;;
   bring-back)     bring_back "$@" ;;
   screensaver)    screensaver "$@" ;;
