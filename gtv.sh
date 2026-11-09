@@ -317,13 +317,51 @@ tweaks() {
   sh_ pm trim-caches 999G >/dev/null 2>&1 || true
   ok "caches trimmed"
 
-  info "Pre-compiling apps with ART (speed-profile) — can take several minutes"
-  if sh_ cmd package compile -m speed-profile -a >/dev/null 2>&1; then
-    ok "apps compiled"
-  else
-    warn "compile not supported on this Android version — skipped"
-  fi
+  compile_apps
   info "Done. Reboot to apply everything: ./gtv.sh reboot"
+}
+
+# Restart the TV. adb can hang once the TV drops the connection, so give it a few
+# seconds and then move on (the TV restarts either way).
+reboot_tv() {
+  require_device
+  info "Restarting the TV"
+  if (( DRY_RUN )); then sh_ reboot; return 0; fi
+  local pid i
+  adb_ reboot >/dev/null 2>&1 &
+  pid=$!
+  for ((i = 0; i < 10; i++)); do
+    kill -0 "$pid" 2>/dev/null || break
+    sleep 1
+  done
+  kill "$pid" 2>/dev/null || true
+  wait "$pid" 2>/dev/null || true
+  ok "Restart sent. The TV is restarting; it is back in about a minute."
+}
+
+# Pre-compile apps (they start faster). The TV prints nothing while it works, so show a
+# heartbeat, and stop waiting after 20 minutes (the TV keeps going on its own).
+compile_apps() {
+  info "Pre-compiling apps (optional, 5 to 15 minutes; the TV may look frozen but is working)"
+  if (( DRY_RUN )); then sh_ cmd package compile -m speed-profile -a; return 0; fi
+  local pid start=$SECONDS next="${GTV_TICK:-30}" rc=0
+  adb_ shell cmd package compile -m speed-profile -a >/dev/null 2>&1 &
+  pid=$!
+  while kill -0 "$pid" 2>/dev/null; do
+    sleep 1
+    if (( SECONDS - start >= next )); then
+      printf '    still working... %dm%02ds   (Ctrl-C skips this step; everything else is already done)\n' \
+        $(( (SECONDS - start) / 60 )) $(( (SECONDS - start) % 60 ))
+      next=$(( next + ${GTV_TICK:-30} ))
+    fi
+    if (( SECONDS - start >= ${GTV_MAX_WAIT:-1200} )); then
+      kill "$pid" 2>/dev/null || true
+      warn "Still compiling after 20 minutes. Not waiting any longer; the TV finishes by itself."
+      return 0
+    fi
+  done
+  wait "$pid" || rc=$?
+  if (( rc == 0 )); then ok "apps compiled"; else warn "compile not supported on this Android version, skipped"; fi
 }
 
 # -------------------------------------------------------------- launcher ----
@@ -439,6 +477,11 @@ a11y_set() {
   fi
 }
 
+# Is Glass's HOME helper (accessibility service) switched on?
+home_takeover_on() {
+  [[ "$(a11y_list)" == *"$GLASS_A11Y"* ]] && [[ "$(q_ settings get secure accessibility_enabled 2>/dev/null || true)" == 1 ]]
+}
+
 enable_home_keeper() {
   local cur new="" svc; cur="$(a11y_list)"
   [[ -e "$A11Y_BACKUP" ]] || printf '%s\n' "$cur" > "$A11Y_BACKUP"
@@ -458,7 +501,11 @@ enable_home_keeper() {
   unset IFS
   new="${new:+$new:}$GLASS_A11Y"
   a11y_set "$new"
-  ok "HOME takeover on: the HOME button and waking the TV now open Glass"
+  if (( ! DRY_RUN )) && ! home_takeover_on; then
+    warn "Could not switch on the HOME helper. Turn it on by hand: TV Settings > Accessibility > Glass Launcher: open on HOME."
+  else
+    ok "HOME takeover on: the HOME button and waking the TV now open Glass"
+  fi
   (( drop_projectivy )) && ok "Projectivy's override turned off"
   [[ "$cur" == *flar2.homebutton/* ]] \
     && warn "Button Mapper is on: make sure its Home button isn't set to open another launcher."
@@ -1167,7 +1214,7 @@ menu() {
       7) ( launcher_reset ) || true ;;
       8) ( status ) || true ;;
       9) ( restore ) || true ;;
-      r|R) ( require_device; info "Rebooting"; adb_ reboot ) || true ;;
+      r|R) ( reboot_tv ) || true ;;
       0|q|Q) return 0 ;;
       *) warn "Unknown choice '$choice'" ;;
     esac
@@ -1229,7 +1276,18 @@ doctor() {
         echo "$ok_ TV connected ($SERIAL)"
         v="$(q_ getprop ro.product.model 2>/dev/null || true)"
         echo "$ok_ $(q_ getprop ro.product.manufacturer 2>/dev/null) ${v:-TV}, Android $(q_ getprop ro.build.version.release 2>/dev/null)"
-        if glass_installed 2>/dev/null; then echo "$ok_ Glass Launcher is installed"; else echo "  - Glass Launcher not installed yet (menu g)"; fi
+        if glass_installed 2>/dev/null; then
+          echo "$ok_ Glass Launcher is installed"
+          if home_takeover_on; then
+            echo "$ok_ HOME takeover is on (the HOME button and a restart open Glass)"
+          else
+            echo "$no_ HOME takeover is OFF, so the TV opens its old home screen."
+            echo "      Fix: run menu g (or: gtv glass) once more, then restart the TV (menu r)."
+            bad=$((bad + 1))
+          fi
+        else
+          echo "  - Glass Launcher not installed yet (menu g)"
+        fi
         ;;
       *unauthorized*)
         echo "$no_ The TV has not allowed this device."
@@ -1338,7 +1396,7 @@ case "$cmd" in
   recheck)        recheck ;;
   bring-back)     bring_back "$@" ;;
   screensaver)    screensaver "$@" ;;
-  reboot)         require_device; info "Rebooting"; adb_ reboot ;;
+  reboot)         reboot_tv ;;
   help|-h|--help) usage ;;
   *)              usage; exit 1 ;;
 esac

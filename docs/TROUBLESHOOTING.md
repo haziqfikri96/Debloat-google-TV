@@ -75,8 +75,13 @@ Wireless debugging gets a **new port** each time it turns off and on (also after
 
 ## While it runs
 
-### The "pre-compiling apps" step is very slow
-That is normal: 5 to 15 minutes, longer on iSH. Keep the app on screen (Termux/iSH) and don't lock the phone. If it was interrupted, just run it again; it is safe to repeat.
+### The "pre-compiling apps" step seems stuck
+It is not stuck. The TV prints nothing while it works, and it takes **5 to 15 minutes** (longer on older TVs). The newest version prints `still working...` every 30 seconds, and stops waiting after 20 minutes. Keep Termux/iSH on the screen and don't lock the phone.
+
+This step is **optional**: everything else has already been done when you reach it. To skip it, press **Ctrl-C** (iSH: tap **ctrl** on the keyboard bar, then **c**), then restart the TV with `gtv reboot`. You can run it again later (menu **5**).
+
+### After "Rebooting" the screen just sits there
+The TV did restart. Older versions of `gtv` waited for the TV to answer, which it never does while restarting. Press **Ctrl-C** (iSH: tap **ctrl** on the keyboard bar, then **c**) and carry on. The newest version stops waiting after a few seconds by itself.
 
 ### It stopped half way (phone locked, app closed)
 Open the app again, type `gtv` and run the same step again. Nothing breaks if you repeat a step. Your backup was saved before the first change.
@@ -93,6 +98,13 @@ Give the exact file name. In iSH run `ls /mnt` to see it (iPhones sometimes add 
 
 ### HOME still opens the old Google TV home screen
 Many Google TVs ignore the "default home app" setting. `gtv glass` turns on a helper for this (**Settings → Accessibility → Glass Launcher: open on HOME**). Check it is on. If it still fails, run `gtv glass --replace`. If another app such as **Button Mapper** or **Projectivy** has its own HOME setting, switch that off or point it at *Glass Launcher*.
+
+### After a restart the TV opens the old home screen and I have to open Glass by hand
+Glass opens itself through a small helper (**Settings → Accessibility → Glass Launcher: open on HOME**). Two things can go wrong:
+1. **The helper is off.** Run `gtv doctor`. If it says *HOME takeover is OFF*, run `gtv glass` once more (menu **g**), then restart the TV (menu **r**).
+2. **It started too late after the restart.** Older versions missed the first home screen after a reboot. Update (`git pull`, then `gtv glass`); the new version opens Glass by itself about 2 seconds after the TV starts.
+
+If it still happens, check on the TV that **Glass Launcher: open on HOME** is switched on, and that no other app (Button Mapper, Projectivy) takes the HOME button.
 
 ### HDMI inputs or Live TV stopped working
 You removed the TV's Live TV app, which shows the inputs. Run `gtv bring-back` and pick it from the list.
