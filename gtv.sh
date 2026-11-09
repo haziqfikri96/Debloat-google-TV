@@ -494,6 +494,8 @@ glass() {
   KEEP_STOCK=$keep HOME_ACTIVITY="$GLASS_PKG/.HomeActivity" launcher "$apk"
   sh_ pm grant "$GLASS_PKG" android.permission.ACCESS_COARSE_LOCATION >/dev/null 2>&1 || true
   enable_home_keeper
+  # Now-playing widget (Spotify etc.): lets Glass read media sessions. No notifications are read.
+  sh_ cmd notification allow_listener "$GLASS_PKG/$GLASS_PKG.MediaListener" >/dev/null 2>&1 || true
   screensaver on
   reapply_config
   apply_pending

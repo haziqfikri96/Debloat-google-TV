@@ -94,7 +94,8 @@ public class HomeActivity extends Activity {
     private SharedPreferences prefs;
     private Prayer prayer;
     private FrameLayout root;
-    private TextView time, date, hijri, styleLabel;
+    private TextView time, date, hijri;
+    private NowPlaying nowPlaying;
     private GridView grid;
     private Adapter adapter;
     private GlassFrame selectedTile;
@@ -159,12 +160,14 @@ public class HomeActivity extends Activity {
         int t = pickTheme();
         if (t != Glass.theme) loadTheme(t);
         refreshPrayer();
+        nowPlaying.start();
     }
 
     @Override
     protected void onStop() {
         super.onStop();
         unregisterReceiver(clockReceiver);
+        nowPlaying.stop();
     }
 
     @Override
@@ -307,8 +310,15 @@ public class HomeActivity extends Activity {
         bar.setClipChildren(false);
         addButtons(bar);
         FrameLayout.LayoutParams blp = new FrameLayout.LayoutParams(-2, -2, Gravity.TOP | Gravity.END);
-        blp.setMargins(0, dp(28), dp(48), 0);
+        blp.setMargins(0, dp(22), dp(48), 0);
         stage.addView(bar, blp);
+
+        // --- left, under the date: floating now-playing card (only while music plays)
+        nowPlaying = new NowPlaying(this);
+        nowPlaying.setListener(() -> grid.requestFocus());
+        FrameLayout.LayoutParams nlp = new FrameLayout.LayoutParams(dp(280), -2, Gravity.TOP | Gravity.START);
+        nlp.setMargins(dp(48), dp(196), 0, 0);
+        stage.addView(nowPlaying, nlp);
 
         // --- right: compact prayer card
         GlassFrame card = buildPrayerCardCompact();
@@ -326,8 +336,9 @@ public class HomeActivity extends Activity {
         stage.addView(dock, dlp);
     }
 
-    /** The glass buttons: Inputs, Google Home, Style, Settings. */
+    /** Inputs and Google Home pills, then one glass bar of shortcut icons. */
     private void addButtons(LinearLayout bar) {
+        bar.setGravity(Gravity.CENTER_VERTICAL);
         inputsPill = pillSmall("Inputs");
         inputsPill.setOnClickListener(v -> showInputs());
         inputsPill.setVisibility(passthroughInputs().isEmpty() ? View.GONE : View.VISIBLE);
@@ -337,14 +348,91 @@ public class HomeActivity extends Activity {
         home.setOnClickListener(v -> openGoogleHome());
         bar.addView(home, pillParams());
 
-        GlassFrame style = pillSmall("Style");
-        styleLabel = (TextView) style.getChildAt(0);
-        style.setOnClickListener(v -> cycleTheme());
-        bar.addView(style, pillParams());
+        GlassFrame icons = new GlassFrame(this, 24, 1f);
+        icons.setClipChildren(false);
+        LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        row.setPadding(dp(5), dp(4), dp(5), dp(4));
+        row.setClipChildren(false);
+        row.setClipToPadding(false);
+        shortcut(row, Icon.ROCKET, "Boost", this::boost);
+        shortcut(row, Icon.MUSIC, "Spotify", this::openMusic);
+        shortcut(row, Icon.WIFI, "Wi-Fi", this::openWifi);
+        shortcut(row, Icon.PALETTE, "Style", this::cycleTheme);
+        shortcut(row, Icon.GEAR, "Settings", () -> launch(new Intent(Settings.ACTION_SETTINGS)));
+        shortcut(row, Icon.POWER, "Power", this::power);
+        icons.addView(row, new FrameLayout.LayoutParams(-2, -2));
+        bar.addView(icons, pillParams());
+    }
 
-        GlassFrame settings = pillSmall("Settings");
-        settings.setOnClickListener(v -> launch(new Intent(Settings.ACTION_SETTINGS)));
-        bar.addView(settings, pillParams());
+    private IconButton shortcut(LinearLayout row, int kind, String name, Runnable action) {
+        IconButton b = new IconButton(this, kind, name, 40);
+        b.setOnClickListener(v -> action.run());
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-2, -2);
+        lp.leftMargin = dp(2);
+        lp.rightMargin = dp(2);
+        row.addView(b, lp);
+        return b;
+    }
+
+    // ------------------------------------------------------------ shortcuts --
+
+    /** Rocket: closes apps idling in the background and shows how much memory came free. */
+    private void boost() {
+        final android.app.ActivityManager am = (android.app.ActivityManager) getSystemService(ACTIVITY_SERVICE);
+        if (am == null) return;
+        final long before = freeMemory(am);
+        worker.execute(() -> {
+            PackageManager pm = getPackageManager();
+            String me = getPackageName();
+            for (ApplicationInfo ai : pm.getInstalledApplications(0)) {
+                if (ai.packageName.equals(me) || (ai.flags & ApplicationInfo.FLAG_PERSISTENT) != 0) continue;
+                try { am.killBackgroundProcesses(ai.packageName); } catch (RuntimeException ignored) {}
+            }
+            try { Thread.sleep(700); } catch (InterruptedException ignored) {}
+            long after = freeMemory(am);
+            ui.post(() -> {
+                long freed = Math.max(0, after - before) / (1024 * 1024);
+                String free = String.format(Locale.ROOT, "%.1f GB free", after / (1024f * 1024 * 1024));
+                Toast.makeText(this, freed > 0 ? "Boosted: " + freed + " MB freed · " + free
+                        : "Already smooth · " + free, Toast.LENGTH_SHORT).show();
+            });
+        });
+    }
+
+    private static long freeMemory(android.app.ActivityManager am) {
+        android.app.ActivityManager.MemoryInfo mi = new android.app.ActivityManager.MemoryInfo();
+        am.getMemoryInfo(mi);
+        return mi.availMem;
+    }
+
+    /** Music note: Spotify if installed, otherwise any music app, otherwise Spotify's Play Store page. */
+    private void openMusic() {
+        PackageManager pm = getPackageManager();
+        for (String pkg : new String[]{"com.spotify.tv.android", "com.spotify.music"}) {
+            Intent i = pm.getLeanbackLaunchIntentForPackage(pkg);
+            if (i == null) i = pm.getLaunchIntentForPackage(pkg);
+            if (i != null) { launch(i); return; }
+        }
+        Intent music = Intent.makeMainSelectorActivity(Intent.ACTION_MAIN, Intent.CATEGORY_APP_MUSIC);
+        if (tryStart(music)) return;
+        if (!tryStart(new Intent(Intent.ACTION_VIEW, Uri.parse("market://details?id=com.spotify.tv.android")))) {
+            Toast.makeText(this, "Spotify is not installed", Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    private void openWifi() {
+        if (tryStart(new Intent(Settings.ACTION_WIFI_SETTINGS))) return;
+        if (tryStart(new Intent(Settings.ACTION_WIRELESS_SETTINGS))) return;
+        launch(new Intent(Settings.ACTION_SETTINGS));
+    }
+
+    /** Power: the TV's own power menu (sleep / restart / off) through the HOME helper service. */
+    private void power() {
+        if (HomeKeeperService.showPowerMenu()) return;
+        Toast.makeText(this, "Turn on \"Glass Launcher: open on HOME\" (gtv glass) to use Power. "
+                + "Or hold the remote's power button.", Toast.LENGTH_LONG).show();
     }
 
     /** The app grid inside the dock. */
@@ -662,13 +750,13 @@ public class HomeActivity extends Activity {
         if (Glass.THEMES[next].equals("Photo") && Glass.findWallpaper(this) == null) next = 0;
         prefs.edit().putInt("theme", next).apply();
         loadTheme(next);
+        Toast.makeText(this, "Style · " + Glass.THEMES[next], Toast.LENGTH_SHORT).show();
     }
 
     private void loadTheme(int t) {
         worker.execute(() -> {
             Glass.load(this, t);
             ui.post(() -> {
-                styleLabel.setText("Style · " + Glass.THEMES[Glass.theme]);
                 GlassFrame.invalidateTree(root);
             });
         });
