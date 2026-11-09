@@ -321,6 +321,24 @@ tweaks() {
   info "Done. Reboot to apply everything: ./gtv.sh reboot"
 }
 
+# Restart the TV. adb can hang once the TV drops the connection, so give it a few
+# seconds and then move on (the TV restarts either way).
+reboot_tv() {
+  require_device
+  info "Restarting the TV"
+  if (( DRY_RUN )); then sh_ reboot; return 0; fi
+  local pid i
+  adb_ reboot >/dev/null 2>&1 &
+  pid=$!
+  for ((i = 0; i < 10; i++)); do
+    kill -0 "$pid" 2>/dev/null || break
+    sleep 1
+  done
+  kill "$pid" 2>/dev/null || true
+  wait "$pid" 2>/dev/null || true
+  ok "Restart sent. The TV is restarting; it is back in about a minute."
+}
+
 # Pre-compile apps (they start faster). The TV prints nothing while it works, so show a
 # heartbeat, and stop waiting after 20 minutes (the TV keeps going on its own).
 compile_apps() {
@@ -1196,7 +1214,7 @@ menu() {
       7) ( launcher_reset ) || true ;;
       8) ( status ) || true ;;
       9) ( restore ) || true ;;
-      r|R) ( require_device; info "Rebooting"; adb_ reboot ) || true ;;
+      r|R) ( reboot_tv ) || true ;;
       0|q|Q) return 0 ;;
       *) warn "Unknown choice '$choice'" ;;
     esac
@@ -1378,7 +1396,7 @@ case "$cmd" in
   recheck)        recheck ;;
   bring-back)     bring_back "$@" ;;
   screensaver)    screensaver "$@" ;;
-  reboot)         require_device; info "Rebooting"; adb_ reboot ;;
+  reboot)         reboot_tv ;;
   help|-h|--help) usage ;;
   *)              usage; exit 1 ;;
 esac

@@ -80,6 +80,9 @@ It is not stuck. The TV prints nothing while it works, and it takes **5 to 15 mi
 
 This step is **optional**: everything else has already been done when you reach it. To skip it, press **Ctrl-C** (iSH: tap **ctrl** on the keyboard bar, then **c**), then restart the TV with `gtv reboot`. You can run it again later (menu **5**).
 
+### After "Rebooting" the screen just sits there
+The TV did restart. Older versions of `gtv` waited for the TV to answer, which it never does while restarting. Press **Ctrl-C** (iSH: tap **ctrl** on the keyboard bar, then **c**) and carry on. The newest version stops waiting after a few seconds by itself.
+
 ### It stopped half way (phone locked, app closed)
 Open the app again, type `gtv` and run the same step again. Nothing breaks if you repeat a step. Your backup was saved before the first change.
 
