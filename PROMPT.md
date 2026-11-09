@@ -16,7 +16,7 @@ The assistant does the rest. You only answer its questions and press **Allow** o
 
 Follow these steps in order, and explain each one to the user in plain words. Every change `gtv.sh` makes can be undone, and you must keep it that way.
 
-1. **Get the code.** Clone the repository and `cd` into it. On an iPhone with iSH, run `sh setup-ios.sh`. On Termux, run `bash setup-phone.sh`. On a computer, check that `adb` works.
+1. **Get the code.** Clone the repository and `cd` into it. On an iPhone with iSH, run `sh setup-ios.sh`. On Termux, run `bash setup-phone.sh`. On a computer, check that `adb` works. Then run `./gtv.sh doctor`: it checks the tools, internet and the TV connection and says how to fix anything that fails. The step-by-step guides for people are in `docs/` (TV-SETUP, INSTALL-ANDROID-PHONE, INSTALL-IPHONE-IPAD, INSTALL-LAPTOP, TROUBLESHOOTING).
 2. **Connect to the TV.**
    - Ask for the TV's IP address (TV: Settings → Network & Internet). Run `./gtv.sh connect <IP>`, and tell the user to press **Allow** on the TV.
    - If the TV only offers *Wireless debugging* (Google TV 12+), ask for the pairing IP:port and code, then run `./gtv.sh pair <IP:PORT> <CODE>`. After that, connect to the IP:port shown on the main Wireless debugging screen.

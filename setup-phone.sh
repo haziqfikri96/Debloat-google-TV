@@ -3,7 +3,7 @@
 #
 #   1. Install Termux from F-Droid or GitHub (the Play Store build is outdated).
 #   2. In Termux:
-#        pkg install -y git && git clone https://github.com/haziqfikri96/Debloat-google-TV.git
+#        pkg update -y && pkg install -y git && git clone https://github.com/haziqfikri96/Debloat-google-TV.git
 #        cd Debloat-google-TV && bash setup-phone.sh
 set -euo pipefail
 
@@ -31,3 +31,4 @@ ln -sf "$DIR/gtv.sh" "$PREFIX/bin/gtv"
 echo
 echo "Done! adb $(adb version | head -n1 | awk '{print $NF}') is ready."
 echo "Start the menu any time by typing:  gtv"
+echo "Check that everything is ready:        gtv doctor"

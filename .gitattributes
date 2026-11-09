@@ -1,0 +1,5 @@
+# Scripts and lists must keep Unix line endings, even when cloned on Windows
+# (CRLF makes bash fail with "$'\r': command not found").
+*.sh   text eol=lf
+*.txt  text eol=lf
+gtv.sh text eol=lf
