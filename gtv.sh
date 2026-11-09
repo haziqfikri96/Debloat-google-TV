@@ -317,13 +317,33 @@ tweaks() {
   sh_ pm trim-caches 999G >/dev/null 2>&1 || true
   ok "caches trimmed"
 
-  info "Pre-compiling apps with ART (speed-profile) — can take several minutes"
-  if sh_ cmd package compile -m speed-profile -a >/dev/null 2>&1; then
-    ok "apps compiled"
-  else
-    warn "compile not supported on this Android version — skipped"
-  fi
+  compile_apps
   info "Done. Reboot to apply everything: ./gtv.sh reboot"
+}
+
+# Pre-compile apps (they start faster). The TV prints nothing while it works, so show a
+# heartbeat, and stop waiting after 20 minutes (the TV keeps going on its own).
+compile_apps() {
+  info "Pre-compiling apps (optional, 5 to 15 minutes; the TV may look frozen but is working)"
+  if (( DRY_RUN )); then sh_ cmd package compile -m speed-profile -a; return 0; fi
+  local pid start=$SECONDS next="${GTV_TICK:-30}" rc=0
+  adb_ shell cmd package compile -m speed-profile -a >/dev/null 2>&1 &
+  pid=$!
+  while kill -0 "$pid" 2>/dev/null; do
+    sleep 1
+    if (( SECONDS - start >= next )); then
+      printf '    still working... %dm%02ds   (Ctrl-C skips this step; everything else is already done)\n' \
+        $(( (SECONDS - start) / 60 )) $(( (SECONDS - start) % 60 ))
+      next=$(( next + ${GTV_TICK:-30} ))
+    fi
+    if (( SECONDS - start >= ${GTV_MAX_WAIT:-1200} )); then
+      kill "$pid" 2>/dev/null || true
+      warn "Still compiling after 20 minutes. Not waiting any longer; the TV finishes by itself."
+      return 0
+    fi
+  done
+  wait "$pid" || rc=$?
+  if (( rc == 0 )); then ok "apps compiled"; else warn "compile not supported on this Android version, skipped"; fi
 }
 
 # -------------------------------------------------------------- launcher ----

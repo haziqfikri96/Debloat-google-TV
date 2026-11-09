@@ -75,8 +75,10 @@ Wireless debugging gets a **new port** each time it turns off and on (also after
 
 ## While it runs
 
-### The "pre-compiling apps" step is very slow
-That is normal: 5 to 15 minutes, longer on iSH. Keep the app on screen (Termux/iSH) and don't lock the phone. If it was interrupted, just run it again; it is safe to repeat.
+### The "pre-compiling apps" step seems stuck
+It is not stuck. The TV prints nothing while it works, and it takes **5 to 15 minutes** (longer on older TVs). The newest version prints `still working...` every 30 seconds, and stops waiting after 20 minutes. Keep Termux/iSH on the screen and don't lock the phone.
+
+This step is **optional**: everything else has already been done when you reach it. To skip it, press **Ctrl-C** (iSH: tap **ctrl** on the keyboard bar, then **c**), then restart the TV with `gtv reboot`. You can run it again later (menu **5**).
 
 ### It stopped half way (phone locked, app closed)
 Open the app again, type `gtv` and run the same step again. Nothing breaks if you repeat a step. Your backup was saved before the first change.
