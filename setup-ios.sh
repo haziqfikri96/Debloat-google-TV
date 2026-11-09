@@ -6,7 +6,7 @@
 #
 #   1. Install "iSH Shell" from the App Store and open it.
 #   2. Paste:
-#        apk add git && git clone https://github.com/haziqfikri96/Debloat-google-TV.git
+#        apk update && apk add git && git clone https://github.com/haziqfikri96/Debloat-google-TV.git
 #        cd Debloat-google-TV && sh setup-ios.sh
 set -e
 
@@ -21,6 +21,7 @@ apk add bash android-tools git curl
 
 DIR="$(cd "$(dirname "$0")" && pwd)"
 chmod +x "$DIR/gtv.sh"
+mkdir -p /usr/local/bin
 ln -sf "$DIR/gtv.sh" /usr/local/bin/gtv
 
 echo
@@ -32,3 +33,4 @@ echo "    (or Settings > Privacy & Security > Local Network > iSH)."
 echo "  - Keep iSH open on screen while it works; iOS pauses apps in the background."
 echo
 echo "Start the menu any time by typing:  gtv"
+echo "Check that everything is ready:        gtv doctor"

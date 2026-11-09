@@ -26,7 +26,7 @@ ROOT="$(cd "$(dirname "$SELF")" && pwd)"
 LISTS="$ROOT/lists"
 BACKUPS="$ROOT/backups"
 GLASS_PKG="io.github.debloatgtv.glass"
-GLASS_URL="https://github.com/haziqfikri96/Debloat-google-TV/releases/download/glass-latest/glass-launcher.apk"
+GLASS_URL="${GLASS_URL:-https://github.com/haziqfikri96/Debloat-google-TV/releases/download/glass-latest/glass-launcher.apk}"
 DEVICE_FILE="$ROOT/.gtv-device"   # last TV we connected to (handy on a phone)
 DRY_RUN=0
 SERIAL="${ANDROID_SERIAL:-}"
@@ -34,6 +34,9 @@ IS_TERMUX=0
 [[ -n "${TERMUX_VERSION:-}" || -d /data/data/com.termux/files/usr ]] && IS_TERMUX=1
 IS_ISH=0
 [[ -e /proc/ish ]] && IS_ISH=1   # iSH on iPhone/iPad
+# Windows (Git Bash) rewrites arguments that start with "/" into C:/... paths, which would
+# break TV paths such as /sdcard/Pictures. Tell it to leave those alone (no effect elsewhere).
+export MSYS2_ARG_CONV_EXCL='/sdcard;/storage;/proc;/data;/system;/sys'
 
 # ---------------------------------------------------------------- output ----
 if [[ -t 1 ]]; then
@@ -502,7 +505,7 @@ glass() {
   # Lets the launcher read a wallpaper pushed with `./gtv.sh wallpaper`.
   sh_ pm grant "$GLASS_PKG" android.permission.READ_MEDIA_IMAGES >/dev/null 2>&1 \
     || sh_ pm grant "$GLASS_PKG" android.permission.READ_EXTERNAL_STORAGE >/dev/null 2>&1 || true
-  ok "Glass Launcher is your home screen. Change the look with the Style button,"
+  ok "Glass Launcher is your home screen. Change the look with the palette icon,"
   ok "or use your own photo: ./gtv.sh wallpaper <photo.jpg>"
 }
 
@@ -1110,6 +1113,7 @@ menu() {
       "3) Make it fast (backup + recommended debloat + speed tweaks)" \
       "4) Debloat only (choose level)" \
       "5) Speed tweaks only" \
+      "d) Check my setup (run this if something fails)" \
       "g) Glass home screen (frosted-glass launcher)" \
       "w) Glass wallpaper from a photo" \
       "p) Prayer times location" \
@@ -1149,6 +1153,7 @@ menu() {
          read -r -p "Number from the list, an APK path, or an installed package name: " apk
          if [[ "$apk" =~ ^[0-9]+$ ]] && (( apk >= 1 && apk <= ${#apks[@]} )); then apk="${apks[$((apk - 1))]}"; fi
          [[ -n "$apk" ]] && { ( launcher "$apk" ) || true; } ;;
+      d|D) ( doctor ) || true ;;
       g|G) ( glass ) || true ;;
       p|P) echo "  Type 'gps' for this phone's location, a city (e.g. Shah Alam), or LAT,LNG"
            read -r -p "Location: " p
@@ -1169,6 +1174,84 @@ menu() {
   done
 }
 
+# Pre-flight check: is this device ready to set up the TV? Prints a fix for every problem.
+doctor() {
+  local bad=0 v state addr
+  local ok_=$'  \e[32m✔\e[0m' no_=$'  \e[31m✘\e[0m'
+  [[ -t 1 ]] || { ok_='  [ok]'; no_='  [!!]'; }
+  info "Checking your setup"
+
+  local where="a computer"
+  (( IS_TERMUX )) && where="an Android phone (Termux)"
+  (( IS_ISH )) && where="an iPhone/iPad (iSH)"
+  echo "$ok_ Running on $where, bash $BASH_VERSION"
+
+  if command -v adb >/dev/null; then
+    echo "$ok_ adb is installed ($(adb version 2>/dev/null | head -n1 | awk '{print $NF}'))"
+  else
+    echo "$no_ adb is missing."
+    if (( IS_TERMUX )); then echo "      Fix: pkg install android-tools   (or: bash setup-phone.sh)"
+    elif (( IS_ISH )); then echo "      Fix: apk add android-tools   (or: sh setup-ios.sh)"
+    else echo "      Fix: install Android platform-tools and add it to PATH (see docs/INSTALL-LAPTOP.md)"; fi
+    bad=$((bad + 1))
+  fi
+
+  if command -v curl >/dev/null; then
+    echo "$ok_ curl is installed"
+    if curl -fsSL --max-time 20 -r 0-0 -o /dev/null "$GLASS_URL" 2>/dev/null; then
+      echo "$ok_ Internet works and Glass Launcher can be downloaded"
+    else
+      echo "$no_ Cannot download Glass Launcher from GitHub: check this device's internet (Wi-Fi, VPN, DNS)."
+      bad=$((bad + 1))
+    fi
+  else
+    echo "$no_ curl is missing. Fix: $( (( IS_TERMUX )) && echo 'pkg install curl' || { (( IS_ISH )) && echo 'apk add curl' || echo 'install curl'; } )"
+    bad=$((bad + 1))
+  fi
+
+  if ! command -v adb >/dev/null; then
+    echo; warn "Fix the problem above, then run: gtv doctor"; return 1
+  fi
+
+  addr="$SERIAL"
+  [[ -z "$addr" && -s "$DEVICE_FILE" ]] && addr="$(cat "$DEVICE_FILE")"
+  if [[ -z "$addr" ]]; then
+    echo "$no_ No TV chosen yet."
+    echo "      Fix: turn on debugging on the TV (docs/TV-SETUP.md), then run: gtv   and choose 1 (or 2 on Google TV 12+)"
+    bad=$((bad + 1))
+  else
+    SERIAL="$addr"
+    is_ip "$SERIAL" && [[ "$SERIAL" != *:* ]] && SERIAL="$SERIAL:5555"
+    is_ip "$SERIAL" && adb connect "$SERIAL" >/dev/null 2>&1 || true
+    state="$(adb_ get-state 2>&1 || true)"
+    case "$state" in
+      device)
+        echo "$ok_ TV connected ($SERIAL)"
+        v="$(q_ getprop ro.product.model 2>/dev/null || true)"
+        echo "$ok_ $(q_ getprop ro.product.manufacturer 2>/dev/null) ${v:-TV}, Android $(q_ getprop ro.build.version.release 2>/dev/null)"
+        if glass_installed 2>/dev/null; then echo "$ok_ Glass Launcher is installed"; else echo "  - Glass Launcher not installed yet (menu g)"; fi
+        ;;
+      *unauthorized*)
+        echo "$no_ The TV has not allowed this device."
+        echo "      Fix: look at the TV screen and choose Allow on the 'Allow USB debugging?' prompt (tick 'Always allow')."
+        bad=$((bad + 1)) ;;
+      *offline*)
+        echo "$no_ The TV is 'offline' (stale connection)."
+        echo "      Fix: run: adb disconnect   then connect again (menu 1). If it stays offline, restart the TV."
+        bad=$((bad + 1)) ;;
+      *)
+        echo "$no_ Cannot reach the TV at $SERIAL."
+        echo "      - TV on and awake? Same Wi-Fi as this device? The TV's IP can change: check Settings > Network."
+        echo "      - Google TV 12+: Developer options > Wireless debugging must be ON; pair again (menu 2) if it was off."
+        (( IS_ISH )) && echo "      - iPhone/iPad: Settings > Privacy & Security > Local Network > turn iSH on."
+        bad=$((bad + 1)) ;;
+    esac
+  fi
+
+  echo
+  if (( bad == 0 )); then ok "Everything looks good."; else warn "$bad problem(s) found. Fix them, then run: gtv doctor"; return 1; fi
+}
+
 usage() {
   cat <<EOF
 gtv.sh — make Android TV / Google TV fast again (all changes reversible)
@@ -1183,6 +1266,7 @@ Options
 
 Commands
   menu                   Interactive numbered menu (default with no command)
+  doctor                 Check that this device and the TV are ready (run this first)
   connect <IP[:PORT]>    Connect to the TV over Wi-Fi and remember it
   pair <IP:PORT> <CODE>  Pair using Wireless debugging (Google TV / Android 11+)
   all [profile]          backup + debloat + tweaks (default profile: recommended)
@@ -1226,6 +1310,7 @@ shift $((OPTIND - 1))
 if [[ $# -eq 0 && -t 0 ]]; then cmd=menu; else cmd="${1:-help}"; shift || true; fi
 case "$cmd" in
   menu)           menu ;;
+  doctor)         doctor ;;
   connect)        require_adb; connect_tv "${1:-}"; ok "Connected to $SERIAL (remembered for next time)" ;;
   pair)           pair_tv "$@" ;;
   all)            debloat "${1:-recommended}"; tweaks ;;

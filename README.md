@@ -1,51 +1,63 @@
 # Debloat Google TV
 
-Make Android TV and Google TV boxes (Chromecast with Google TV, Google TV Streamer, Sony, TCL, Mi Box, Shield, etc.) **fast and smooth again**. It removes bloat, cuts background work, and swaps the ad-heavy home screen for a clean launcher.
+Make Android TV and Google TV boxes (Chromecast with Google TV, Google TV Streamer, Sony, TCL, Xiaomi, Mi Box, Shield and more) **fast and smooth again**. It removes bloat, cuts background work, and swaps the ad-heavy home screen for a clean, frosted-glass launcher with prayer times, weather, a Spotify player and a Google Home button.
 
-Everything runs over ADB from your computer. You don't need root, and **every change can be undone**:
+![Glass Launcher](docs/glass-clean.jpg)
 
-- Apps are removed only for the TV's user (`pm uninstall --user 0`). They stay on the system partition, and a factory reset brings them back.
-- Before the first change, the script saves a backup of your packages, settings and home app.
-- `./gtv.sh restore` puts the TV back the way it was.
+**You don't need root, a computer or any special skill.** You can set up the TV from an Android phone, an iPhone/iPad or a laptop, in about 15 minutes. And **every change can be undone**:
+
+- Apps are removed only for the TV's user (`pm uninstall --user 0`). They stay on the TV's system partition, and a factory reset brings them back.
+- Before the first change, a backup of your packages, settings and home app is saved.
+- `gtv restore` puts the TV back the way it was.
 
 > **Have an AI coding assistant?** Paste one line and let it do everything. See [PROMPT.md](PROMPT.md).
 
-## Install from your phone (no computer needed)
+## How to install (3 steps)
 
-You can do everything from an **Android phone** on the same Wi-Fi as the TV.
+### 1. Get your TV ready
 
-**1. Turn on debugging on the TV**
+On the TV, turn on Developer options and **USB debugging** / **Wireless debugging** (3 minutes, with the remote).
+**[Follow: TV setup](docs/TV-SETUP.md)**
 
-- Settings → System → About → click **Android TV OS build** 7 times. This turns on Developer options.
-- Settings → System → Developer options:
-  - **Google TV / Android 11 and newer:** turn on **Wireless debugging**.
-  - **Older Android TV:** turn on **USB debugging** / **Network debugging**.
+### 2. Pick your device
 
-**2. Set up the phone (one time)**
+Use whichever you have. The steps are written to be followed one by one, with the exact thing to type or tap.
 
-- Install **Termux** from [F-Droid](https://f-droid.org/packages/com.termux/) or [GitHub](https://github.com/termux/termux-app/releases). The Play Store version is outdated and won't work.
-- Open Termux and paste:
+| I have… | Follow this guide | Needs |
+|---|---|---|
+| **An Android phone** | **[Install from an Android phone](docs/INSTALL-ANDROID-PHONE.md)** | The free *Termux* app |
+| **An iPhone or iPad** | **[Install from an iPhone or iPad](docs/INSTALL-IPHONE-IPAD.md)** | The free *iSH Shell* app |
+| **A laptop or desktop** (Windows, Mac, Linux) | **[Install from a computer](docs/INSTALL-LAPTOP.md)** | Git and Android platform-tools |
 
-```bash
-pkg install -y git && git clone https://github.com/haziqfikri96/Debloat-google-TV.git
-cd Debloat-google-TV && bash setup-phone.sh
+All three end up in the same place: a numbered menu (`gtv`) where you connect to the TV, make it fast, and install the glass home screen.
+
+### 3. Check, then run
+
+Each guide ends with the same short list. This is the whole job:
+
+```text
+gtv doctor      check that this device and the TV are ready (shows how to fix anything that isn't)
+gtv             open the menu:   1/2 connect  ·  3 make it fast  ·  g glass home screen  ·  r reboot
 ```
 
-This installs `adb` and asks for access to your Downloads folder (tap **Allow**). It also adds a `gtv` shortcut.
+Something went wrong? Run `gtv doctor`, then see **[Troubleshooting](docs/TROUBLESHOOTING.md)**.
 
-**3. Run it:** type `gtv` and pick numbers from the menu:
+### The menu
 
 ```
-Debloat Google TV   TV: not connected
+Debloat Google TV   TV: 192.168.1.50:5555
   1) Connect to TV
   2) Pair TV (Google TV 12+ wireless debugging)
   3) Make it fast (backup + recommended debloat + speed tweaks)
   4) Debloat only (choose level)
   5) Speed tweaks only
+  d) Check my setup (run this if something fails)
   g) Glass home screen (frosted-glass launcher)
   w) Glass wallpaper from a photo
   p) Prayer times location
   h) Google Home control
+  u) Remove apps (pick by number)
+  b) Bring back removed apps
   6) Other launcher (APK or package)
   7) Bring back stock home screen
   8) Status
@@ -54,64 +66,25 @@ Debloat Google TV   TV: not connected
   0) Exit
 ```
 
-- **Older TVs (Network debugging):** choose **1**, enter the TV's IP (Settings → Network), then accept *Allow debugging?* on the TV.
-- **Google TV with Wireless debugging:** choose **2**. On the TV, open *Wireless debugging → Pair device with pairing code*. Enter the **IP:port and code** shown there. Then enter the **IP:port on the main Wireless debugging screen**. Note that the two ports are different.
-- Then choose **3** to make the TV fast, and **r** to reboot.
-- **Prayer times:** choose **p**, then type `gps` (uses the phone's location; needs the Termux:API app) or your town, e.g. `Shah Alam`. In Malaysia, the launcher uses JAKIM's official times for your zone.
-- **Google Home:** choose **h** to set up the Google Home button (Assistant voice control or the TV's Home panel).
-- **Glass look:** choose **g**. To frost your own photo, save it to the phone's Downloads folder, then choose **w**.
-- **Another launcher:** download its APK in your phone's browser, then choose **6**. APKs in your Downloads folder are listed by number.
+On a computer you can use commands instead of the menu; see the table below. Windows: `bash gtv.sh <command>`. Mac and Linux: `./gtv.sh <command>`.
 
-The TV address is remembered, so the next time you open `gtv`, you can go straight to any option.
+## What you get
 
-> **Tip:** Termux on Android 12+ can get killed in the background. Keep Termux on screen while it works, especially during the "pre-compiling apps" step.
->
-> **iPhone:** iOS can't run `adb`, so use a computer (below) instead.
+- **Speed:** bloat removed, background work cut, animations faster, apps pre-compiled.
+- **Glass home screen:** a clean, frosted-glass launcher. Your own wallpaper shows through, with a big clock, weather, a dock of your apps and shortcut icons. Apps you don't have show as dimmed icons and are **installed only when you select them**.
+- **Prayer times** that follow your location. In Malaysia they are JAKIM's official times; elsewhere they are calculated with your country's method.
+- **Spotify player:** a floating "now playing" card with the cover, title and play/next/previous buttons.
+- **Google Home** button, an **Inputs** button for HDMI, and a StandBy clock screensaver.
+- **Undo** for everything.
 
-## Install from an iPhone or iPad
-
-iOS can't run Android, but the free **iSH Shell** app runs a small Linux on your iPhone/iPad. That Linux has Android's `adb` tool, which is all this toolkit needs. Nothing is installed on iOS itself.
-
-1. **On the TV:** turn on debugging, as in step 1 above.
-2. **On the iPhone/iPad:** install **[iSH Shell](https://apps.apple.com/app/ish-shell/id1436902243)** from the App Store, open it and paste:
-
-   ```sh
-   apk add git && git clone https://github.com/haziqfikri96/Debloat-google-TV.git
-   cd Debloat-google-TV && sh setup-ios.sh
-   ```
-
-3. Type `gtv` and use the same menu as on Android (**1** connect / **2** pair, **3** make it fast, **g** Glass home screen, **p** prayer times, **h** Google Home).
-
-Tips for iSH:
-- **Allow Local Network:** when iOS asks whether iSH may find devices on your network, tap **Allow**. You can also turn it on later in Settings → Privacy & Security → Local Network → iSH. Without it, `gtv` can't reach the TV.
-- **Keep iSH on screen.** iOS pauses background apps, so stay in iSH during "Make it fast", especially the app pre-compiling step.
-- **Prayer location:** iSH can't read the iPhone's GPS, so type your town (e.g. `Shah Alam`) instead of `gps`.
-- **Photos and APK files:** to use a wallpaper photo or APK from the Files app, run `mount -t ios . /mnt` in iSH and pick the folder (e.g. Downloads). `gtv` then finds files there by name.
-- **Speed:** iSH emulates a PC processor, so commands run slower than on Android or a laptop, but every step works the same.
-
-## Quick start (computer)
-
-1. **On the TV:** Settings → System → About → click **Build** 7 times. Then Settings → System → Developer options → turn on **USB debugging** (on Google TV this also turns on network debugging).
-2. **On your computer:** install [Android platform-tools](https://developer.android.com/tools/releases/platform-tools) so `adb` is on your PATH.
-3. Find the TV's IP address (Settings → Network) and run:
-
-```bash
-git clone https://github.com/haziqfikri96/Debloat-google-TV.git
-cd Debloat-google-TV
-
-./gtv.sh -s 192.168.1.50 status          # connect; accept the prompt on the TV
-./gtv.sh -s 192.168.1.50 -n all           # dry run: shows what would change
-./gtv.sh -s 192.168.1.50 all              # backup + debloat + speed tweaks
-./gtv.sh -s 192.168.1.50 reboot
-```
-
-> **Windows:** run it from **Git Bash** or **WSL**. **Mac:** macOS ships an old bash, so first run `brew install bash`, then use `$(brew --prefix)/bin/bash ./gtv.sh`.
+See [glass-launcher/README.md](glass-launcher/README.md) for all the features and how the glass stays fast.
 
 ## Commands
 
 | Command | What it does |
 |---|---|
 | *(no command)* / `menu` | Numbered interactive menu, easiest on a phone |
+| `doctor` | Checks that this device and the TV are ready, and shows how to fix anything that isn't. Run it first |
 | `connect <IP[:PORT]>` | Connects over Wi-Fi and remembers the TV for later runs |
 | `pair <IP:PORT> <CODE>` | Pairs with *Wireless debugging* (Google TV / Android 11+) |
 | `all [profile]` | Backup, debloat (default `recommended`), then speed tweaks |
@@ -165,8 +138,6 @@ You can also pass a list file directly: `./gtv.sh debloat my-list.txt`.
 
 Most of the lag on Google TV comes from the stock home screen. It is full of ads, autoplaying trailers and heavy recommendation rows. This repo includes **[Glass Launcher](glass-launcher/)**, a tiny home screen with a frosted-glass design that is built to stay smooth on cheap TV hardware.
 
-![Glass Launcher](docs/glass-clean.jpg)
-
 ```bash
 ./gtv.sh glass                    # install it and make it the home screen
 ./gtv.sh wallpaper beach.jpg      # optional: put your own photo behind the glass
@@ -175,7 +146,7 @@ Most of the lag on Google TV comes from the stock home screen. It is full of ads
 
 It also has **prayer times** (JAKIM's official times in Malaysia), a **Google Home** button, and icons for popular apps that are **installed only when you select them**.
 
-From the phone menu, choose **g** for the Glass home screen, **w** for a wallpaper, **p** for the prayer location and **h** for Google Home. The **Style** button on the TV switches between Aurora, Ocean, Sunset, Graphite and Photo. See [glass-launcher/README.md](glass-launcher/README.md) for how the glass stays fast.
+From the phone menu, choose **g** for the Glass home screen, **w** for a wallpaper, **p** for the prayer location and **h** for Google Home. The **palette icon** on the TV switches between Aurora, Ocean, Sunset, Graphite and Photo. See [glass-launcher/README.md](glass-launcher/README.md) for how the glass stays fast.
 
 ### Or use another launcher
 
@@ -196,17 +167,37 @@ A hidden system app, `com.mstar.netflixobserver`, re-installs them at every boot
 
 ## Undo / troubleshooting
 
-- **Undo everything:** `./gtv.sh restore` then `./gtv.sh reboot`.
+Something not working? Run `gtv doctor` first, then see **[docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md)**. It covers every error we know of, with the fix.
+
+- **Undo everything:** `gtv restore` then `gtv reboot`.
+- **Bring back removed apps:** `gtv bring-back` (pick them from a numbered list).
+- **Back to the stock home screen:** `gtv launcher-reset`.
 - **Reinstall a single app:** `adb shell cmd package install-existing <package>`
-- **A feature broke:** check `./gtv.sh status`, then remove the related package from your list and run `restore`.
 - **Worst case:** a factory reset restores every app, because nothing is deleted from the system partition.
 
 Backups are stored in `backups/` (git-ignored). `original` always points to the state before your first change, and `latest` points to the newest snapshot.
+
+## Update
+
+```bash
+cd Debloat-google-TV && git pull
+gtv glass          # installs the newest Glass Launcher; your settings are restored
+```
+
+## Fork or build it yourself
+
+The Glass Launcher is built by GitHub Actions (`.github/workflows/glass-launcher.yml`) and published as `glass-launcher.apk` on the **glass-latest** release. In a fork, enable Actions and push; `gtv` downloads from `GLASS_URL`, which you can point at your own release: `GLASS_URL=https://github.com/<you>/Debloat-google-TV/releases/download/glass-latest/glass-launcher.apk gtv glass`. To build locally, see [glass-launcher/README.md](glass-launcher/README.md).
+
+Contributions are welcome. Before you open a pull request, run `bash -n gtv.sh && shellcheck gtv.sh setup-*.sh` and test with `-n` (dry run).
 
 ## Credits
 
 - Device knowledge (Xiaomi's Netflix observer, extra Xiaomi/Google tracking packages, which apps handle HDMI) is partly from the device lists of [CleanYourTV](https://github.com/Gathin23/cleanyourtv) (MIT) and [Glass TV](https://github.com/aqmangge/glass-tv-home).
 - Official Malaysian prayer times come from [JAKIM e-Solat](https://www.e-solat.gov.my/).
+
+## License
+
+[MIT](LICENSE). Free to use, copy and change.
 
 ## Disclaimer
 
