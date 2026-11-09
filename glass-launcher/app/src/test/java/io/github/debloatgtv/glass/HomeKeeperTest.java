@@ -21,4 +21,12 @@ public class HomeKeeperTest {
         assertFalse(HomeKeeperService.isStockHome("com.netflix.ninja", "com.netflix.ninja.MainActivity"));
         assertFalse(HomeKeeperService.isStockHome(null, null));
     }
+
+    @Test
+    public void opensGlassOnlyRightAfterBoot() {
+        assertTrue(HomeKeeperService.justBooted(30 * 1000L));
+        assertTrue(HomeKeeperService.justBooted(4 * 60 * 1000L));
+        assertFalse(HomeKeeperService.justBooted(6 * 60 * 1000L));
+        assertFalse(HomeKeeperService.justBooted(3 * 60 * 60 * 1000L));
+    }
 }

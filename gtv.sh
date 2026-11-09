@@ -459,6 +459,11 @@ a11y_set() {
   fi
 }
 
+# Is Glass's HOME helper (accessibility service) switched on?
+home_takeover_on() {
+  [[ "$(a11y_list)" == *"$GLASS_A11Y"* ]] && [[ "$(q_ settings get secure accessibility_enabled 2>/dev/null || true)" == 1 ]]
+}
+
 enable_home_keeper() {
   local cur new="" svc; cur="$(a11y_list)"
   [[ -e "$A11Y_BACKUP" ]] || printf '%s\n' "$cur" > "$A11Y_BACKUP"
@@ -478,7 +483,11 @@ enable_home_keeper() {
   unset IFS
   new="${new:+$new:}$GLASS_A11Y"
   a11y_set "$new"
-  ok "HOME takeover on: the HOME button and waking the TV now open Glass"
+  if (( ! DRY_RUN )) && ! home_takeover_on; then
+    warn "Could not switch on the HOME helper. Turn it on by hand: TV Settings > Accessibility > Glass Launcher: open on HOME."
+  else
+    ok "HOME takeover on: the HOME button and waking the TV now open Glass"
+  fi
   (( drop_projectivy )) && ok "Projectivy's override turned off"
   [[ "$cur" == *flar2.homebutton/* ]] \
     && warn "Button Mapper is on: make sure its Home button isn't set to open another launcher."
@@ -1249,7 +1258,18 @@ doctor() {
         echo "$ok_ TV connected ($SERIAL)"
         v="$(q_ getprop ro.product.model 2>/dev/null || true)"
         echo "$ok_ $(q_ getprop ro.product.manufacturer 2>/dev/null) ${v:-TV}, Android $(q_ getprop ro.build.version.release 2>/dev/null)"
-        if glass_installed 2>/dev/null; then echo "$ok_ Glass Launcher is installed"; else echo "  - Glass Launcher not installed yet (menu g)"; fi
+        if glass_installed 2>/dev/null; then
+          echo "$ok_ Glass Launcher is installed"
+          if home_takeover_on; then
+            echo "$ok_ HOME takeover is on (the HOME button and a restart open Glass)"
+          else
+            echo "$no_ HOME takeover is OFF, so the TV opens its old home screen."
+            echo "      Fix: run menu g (or: gtv glass) once more, then restart the TV (menu r)."
+            bad=$((bad + 1))
+          fi
+        else
+          echo "  - Glass Launcher not installed yet (menu g)"
+        fi
         ;;
       *unauthorized*)
         echo "$no_ The TV has not allowed this device."

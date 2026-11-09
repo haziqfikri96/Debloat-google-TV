@@ -96,6 +96,13 @@ Give the exact file name. In iSH run `ls /mnt` to see it (iPhones sometimes add 
 ### HOME still opens the old Google TV home screen
 Many Google TVs ignore the "default home app" setting. `gtv glass` turns on a helper for this (**Settings → Accessibility → Glass Launcher: open on HOME**). Check it is on. If it still fails, run `gtv glass --replace`. If another app such as **Button Mapper** or **Projectivy** has its own HOME setting, switch that off or point it at *Glass Launcher*.
 
+### After a restart the TV opens the old home screen and I have to open Glass by hand
+Glass opens itself through a small helper (**Settings → Accessibility → Glass Launcher: open on HOME**). Two things can go wrong:
+1. **The helper is off.** Run `gtv doctor`. If it says *HOME takeover is OFF*, run `gtv glass` once more (menu **g**), then restart the TV (menu **r**).
+2. **It started too late after the restart.** Older versions missed the first home screen after a reboot. Update (`git pull`, then `gtv glass`); the new version opens Glass by itself about 2 seconds after the TV starts.
+
+If it still happens, check on the TV that **Glass Launcher: open on HOME** is switched on, and that no other app (Button Mapper, Projectivy) takes the HOME button.
+
 ### HDMI inputs or Live TV stopped working
 You removed the TV's Live TV app, which shows the inputs. Run `gtv bring-back` and pick it from the list.
 
