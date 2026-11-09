@@ -1167,7 +1167,6 @@ Commands
   recheck                Remove again any removed app that came back (after updates/reboots)
   bring-back [pkg...]    Bring back apps gtv removed (numbered picker without arguments)
   screensaver on|off     Glass StandBy clock screensaver (clock + next prayer)
-  layout clean|classic   Glass home layout: Clean (wallpaper + dock, default) or Classic (big grid)
   packages [filter]      List installed packages
   apps                   Numbered list of home-screen apps; pick numbers to remove
   get <package>          Open an app's Play Store page on the TV (e.g. gtv get perfect)
@@ -1218,9 +1217,6 @@ case "$cmd" in
   recheck)        recheck ;;
   bring-back)     bring_back "$@" ;;
   screensaver)    screensaver "$@" ;;
-  layout)         [[ "${1:-}" =~ ^(clean|classic)$ ]] || die "Usage: ./gtv.sh layout clean|classic"
-                  require_device
-                  if glass_config layout "$1"; then ok "Glass layout: $1"; else not_yet "Layout"; fi ;;
   reboot)         require_device; info "Rebooting"; adb_ reboot ;;
   help|-h|--help) usage ;;
   *)              usage; exit 1 ;;

@@ -4,11 +4,7 @@ A minimal, fast home screen for Android TV / Google TV with a **frosted-glass** 
 
 ![Clean layout](../docs/glass-clean.jpg)
 
-**Two layouts.** *Clean* (the default) puts your wallpaper first: a big clock, the weather and the date float on the photo, with a compact prayer card and a single glass dock of apps. *Classic* has the big glass grid:
-
-![Classic layout](../docs/glass-aurora.jpg)
-
-Switch layouts by long-pressing **Style** on the TV, or with `gtv layout clean|classic`. The weather line ("28° · Hujan · Terasa 33°") comes from [Open-Meteo](https://open-meteo.com/) (free, no account) for your prayer location, and refreshes every 30 minutes.
+Your wallpaper comes first: a big clock, the weather and the date float on the photo, next to a compact prayer card and a single glass dock of apps. The weather line ("28° · Hujan · Terasa 33°") comes from [Open-Meteo](https://open-meteo.com/) (free, no account) for your prayer location, and refreshes every 30 minutes.
 
 | Sunset (Malaysia, JAKIM) | Graphite (London, MWL) | Your own photo |
 |---|---|---|

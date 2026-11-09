@@ -66,10 +66,8 @@ import java.util.concurrent.Executors;
  */
 public class HomeActivity extends Activity {
 
-    /** 5 columns in the Classic layout, a 7-tile dock in the Clean one. */
-    private int columns = 5;
-    /** Clean layout: wallpaper first, clock on the photo, one glass dock (default). */
-    private boolean clean = true;
+    /** Apps per dock row. */
+    private static final int COLUMNS = 7;
     private Weather weather;
     private TextView weatherLine;
 
@@ -114,7 +112,7 @@ public class HomeActivity extends Activity {
 
     // prayer card
     private TextView nextLabel, nextTime, nextIn, prayerSource;
-    private LinearLayout prayerRow, prayerBody;
+    private LinearLayout prayerBody;
     private TextView prayerHint;
     private final GlassFrame[] chips = new GlassFrame[6];
     private final TextView[] chipName = new TextView[6], chipTime = new TextView[6];
@@ -133,8 +131,6 @@ public class HomeActivity extends Activity {
         prayer = new Prayer(this);
         weather = new Weather(this);
         handleConfig(getIntent());
-        clean = !"classic".equals(prefs.getString("layout", "clean"));
-        columns = clean ? 7 : 5;
         buildUi();
         loadTheme(pickTheme());
         loadApps();
@@ -183,11 +179,6 @@ public class HomeActivity extends Activity {
     protected void onNewIntent(Intent intent) {
         super.onNewIntent(intent);
         if (handleConfig(intent)) {
-            boolean wantClean = !"classic".equals(prefs.getString("layout", "clean"));
-            if (wantClean != clean) {
-                recreate();
-                return;
-            }
             refreshPrayer();
             loadApps();
             return;
@@ -208,9 +199,6 @@ public class HomeActivity extends Activity {
         if (b.containsKey("homePanel")) {
             String c = b.getString("homePanel");
             if (c == null || c.isEmpty()) e.remove("homePanel"); else e.putString("homePanel", c);
-        }
-        if (b.containsKey("layout")) {
-            e.putString("layout", "classic".equals(b.getString("layout")) ? "classic" : "clean");
         }
         if (b.containsKey("suggestions")) {
             String s = b.getString("suggestions", "on");
@@ -269,7 +257,7 @@ public class HomeActivity extends Activity {
         root = new FrameLayout(this) {
             @Override protected void dispatchDraw(Canvas c) {
                 Glass.drawBackground(c, this);
-                if (clean) {
+                {
                     // Darken the top and bottom a little so text and dock stay readable on any photo.
                     int w = getWidth(), h = getHeight();
                     shade.setShader(new android.graphics.LinearGradient(0, 0, 0, h,
@@ -281,7 +269,7 @@ public class HomeActivity extends Activity {
             }
         };
         root.setWillNotDraw(false);
-        if (clean) buildClean(); else buildClassic();
+        buildClean();
         setContentView(root);
         grid.requestFocus();
     }
@@ -317,7 +305,7 @@ public class HomeActivity extends Activity {
         LinearLayout bar = new LinearLayout(this);
         bar.setOrientation(LinearLayout.HORIZONTAL);
         bar.setClipChildren(false);
-        addButtons(bar, true);
+        addButtons(bar);
         FrameLayout.LayoutParams blp = new FrameLayout.LayoutParams(-2, -2, Gravity.TOP | Gravity.END);
         blp.setMargins(0, dp(28), dp(48), 0);
         stage.addView(bar, blp);
@@ -338,114 +326,31 @@ public class HomeActivity extends Activity {
         stage.addView(dock, dlp);
     }
 
-    /** The glass buttons: Inputs, Google Home, Style (long-press: layout), Settings. */
-    private void addButtons(LinearLayout bar, boolean small) {
-        inputsPill = small ? pillSmall("Inputs") : pill("Inputs");
+    /** The glass buttons: Inputs, Google Home, Style, Settings. */
+    private void addButtons(LinearLayout bar) {
+        inputsPill = pillSmall("Inputs");
         inputsPill.setOnClickListener(v -> showInputs());
         inputsPill.setVisibility(passthroughInputs().isEmpty() ? View.GONE : View.VISIBLE);
-        bar.addView(inputsPill, pillParams(small));
+        bar.addView(inputsPill, pillParams());
 
-        GlassFrame home = small ? pillSmall("Google Home") : pill("Google Home");
+        GlassFrame home = pillSmall("Google Home");
         home.setOnClickListener(v -> openGoogleHome());
-        bar.addView(home, pillParams(small));
+        bar.addView(home, pillParams());
 
-        GlassFrame style = small ? pillSmall("Style") : pill("Style");
+        GlassFrame style = pillSmall("Style");
         styleLabel = (TextView) style.getChildAt(0);
         style.setOnClickListener(v -> cycleTheme());
-        style.setOnLongClickListener(v -> {
-            styleMenu();
-            return true;
-        });
-        bar.addView(style, pillParams(small));
+        bar.addView(style, pillParams());
 
-        GlassFrame settings = small ? pillSmall("Settings") : pill("Settings");
+        GlassFrame settings = pillSmall("Settings");
         settings.setOnClickListener(v -> launch(new Intent(Settings.ACTION_SETTINGS)));
-        bar.addView(settings, pillParams(small));
+        bar.addView(settings, pillParams());
     }
 
-    private void styleMenu() {
-        List<String> labels = new ArrayList<>();
-        List<Runnable> actions = new ArrayList<>();
-        labels.add("Next wallpaper style");
-        actions.add(this::cycleTheme);
-        labels.add(clean ? "Classic layout (big app grid)" : "Clean layout (wallpaper + dock)");
-        actions.add(() -> {
-            prefs.edit().putString("layout", clean ? "classic" : "clean").apply();
-            recreate();
-        });
-        showMenu("Style", null, labels, actions);
-    }
-
-    /** Classic layout: clock + prayer cards on top, big glass grid of apps. */
-    private void buildClassic() {
-        // 5% TV overscan-safe margins.
-        LinearLayout column = new LinearLayout(this);
-        content = column;
-        column.setOrientation(LinearLayout.VERTICAL);
-        column.setPadding(dp(48), dp(27), dp(48), 0);
-        column.setClipChildren(false);
-        column.setClipToPadding(false);
-        root.addView(column, new FrameLayout.LayoutParams(-1, -1));
-
-        // --- top row: clock card + prayer times card
-        LinearLayout top = new LinearLayout(this);
-        top.setOrientation(LinearLayout.HORIZONTAL);
-        top.setClipChildren(false);
-        column.addView(top, new LinearLayout.LayoutParams(-1, -2));
-
-        GlassFrame clock = new GlassFrame(this, 22, 1f);
-        LinearLayout clockText = new LinearLayout(this);
-        clockText.setOrientation(LinearLayout.VERTICAL);
-        clockText.setGravity(Gravity.CENTER_VERTICAL);
-        clockText.setPadding(dp(22), dp(12), dp(26), dp(12));
-        time = text(40, 255, false);
-        date = text(13, 210, false);
-        date.setPadding(0, dp(6), 0, 0);
-        hijri = text(13, 170, false);
-        hijri.setPadding(0, dp(4), 0, 0);
-        clockText.addView(time);
-        clockText.addView(date);
-        clockText.addView(hijri);
-        clock.addView(clockText, new FrameLayout.LayoutParams(-2, -1));
-        top.addView(clock, new LinearLayout.LayoutParams(-2, -1));
-
-        GlassFrame card = buildPrayerCard();
-        LinearLayout.LayoutParams cardLp = new LinearLayout.LayoutParams(0, -1, 1f);
-        cardLp.leftMargin = dp(16);
-        top.addView(card, cardLp);
-
-        // --- title row: "Apps" + glass buttons
-        LinearLayout bar = new LinearLayout(this);
-        bar.setOrientation(LinearLayout.HORIZONTAL);
-        bar.setGravity(Gravity.CENTER_VERTICAL);
-        bar.setClipChildren(false);
-        bar.setPadding(0, dp(18), 0, dp(12));
-        column.addView(bar, new LinearLayout.LayoutParams(-1, -2));
-
-        TextView title = text(15, 190, true);
-        title.setText("Apps");
-        title.setLetterSpacing(0.08f);
-        title.setPadding(dp(6), 0, 0, 0);
-        bar.addView(title, new LinearLayout.LayoutParams(0, -2, 1f));
-
-        addButtons(bar, false);
-
-        // --- apps panel: one big glass sheet holding a grid of glass tiles
-        GlassFrame sheet = new GlassFrame(this, 28, 1f);
-        // Clip scrolled rows to the sheet; the grid's padding leaves room for the focus lift.
-        sheet.setClipChildren(true);
-        LinearLayout.LayoutParams sheetLp = new LinearLayout.LayoutParams(-1, 0, 1f);
-        sheetLp.bottomMargin = dp(27);
-        column.addView(sheet, sheetLp);
-
-        makeGrid(dp(18), dp(22), dp(18));
-        sheet.addView(grid, new FrameLayout.LayoutParams(-1, -1));
-    }
-
-    /** The app grid (shared by both layouts). */
+    /** The app grid inside the dock. */
     private void makeGrid(int spacing, int padding, int rowSpacing) {
         grid = new GridView(this);
-        grid.setNumColumns(columns);
+        grid.setNumColumns(COLUMNS);
         grid.setStretchMode(GridView.STRETCH_COLUMN_WIDTH);
         grid.setHorizontalSpacing(spacing);
         grid.setVerticalSpacing(rowSpacing);
@@ -512,9 +417,9 @@ public class HomeActivity extends Activity {
         return f;
     }
 
-    private LinearLayout.LayoutParams pillParams(boolean small) {
+    private LinearLayout.LayoutParams pillParams() {
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-2, -2);
-        lp.leftMargin = dp(small ? 8 : 14);
+        lp.leftMargin = dp(8);
         return lp;
     }
 
@@ -528,13 +433,8 @@ public class HomeActivity extends Activity {
 
     private void updateClock() {
         Date now = new Date();
-        if (clean) {
-            time.setText(DateFormat.format(DateFormat.is24HourFormat(this) ? "HH:mm" : "h:mm", now));
-            date.setText(DateFormat.format("EEEE, d MMMM yyyy", now));
-        } else {
-            time.setText(DateFormat.getTimeFormat(this).format(now));
-            date.setText(DateFormat.format("EEEE, d MMMM", now).toString().toUpperCase(Locale.getDefault()));
-        }
+        time.setText(DateFormat.format(DateFormat.is24HourFormat(this) ? "HH:mm" : "h:mm", now));
+        date.setText(DateFormat.format("EEEE, d MMMM yyyy", now));
         if (weatherLine != null) {
             String w = weather.line();
             weatherLine.setText(w);
@@ -562,69 +462,6 @@ public class HomeActivity extends Activity {
     }
 
     // --------------------------------------------------------------- prayer --
-
-    private GlassFrame buildPrayerCard() {
-        GlassFrame card = new GlassFrame(this, 22, 1f);
-        LinearLayout body = new LinearLayout(this);
-        body.setOrientation(LinearLayout.VERTICAL);
-        body.setPadding(dp(20), dp(12), dp(16), dp(10));
-        card.addView(body, new FrameLayout.LayoutParams(-1, -1));
-
-        prayerRow = new LinearLayout(this);
-        prayerRow.setOrientation(LinearLayout.HORIZONTAL);
-        prayerRow.setGravity(Gravity.CENTER_VERTICAL);
-        prayerRow.setClipChildren(false);
-        body.addView(prayerRow, new LinearLayout.LayoutParams(-1, 0, 1f));
-
-        LinearLayout next = new LinearLayout(this);
-        next.setOrientation(LinearLayout.VERTICAL);
-        nextLabel = text(11, 190, true);
-        nextLabel.setLetterSpacing(0.12f);
-        nextTime = text(30, 255, false);
-        nextTime.setPadding(0, dp(4), 0, dp(3));
-        nextIn = text(13, 210, false);
-        next.addView(nextLabel);
-        next.addView(nextTime);
-        next.addView(nextIn);
-        LinearLayout.LayoutParams nlp = new LinearLayout.LayoutParams(dp(150), -2);
-        prayerRow.addView(next, nlp);
-
-        for (int i = 0; i < 6; i++) {
-            GlassFrame chip = new GlassFrame(this, 14, 1f);
-            LinearLayout c = new LinearLayout(this);
-            c.setOrientation(LinearLayout.VERTICAL);
-            c.setGravity(Gravity.CENTER);
-            c.setPadding(0, dp(8), 0, dp(8));
-            chipName[i] = text(11, 200, true);
-            chipName[i].setGravity(Gravity.CENTER);
-            oneLine(chipName[i]);
-            chipTime[i] = text(17, 245, false);
-            chipTime[i].setGravity(Gravity.CENTER);
-            oneLine(chipTime[i]);
-            chipTime[i].setPadding(0, dp(5), 0, 0);
-            c.addView(chipName[i], new LinearLayout.LayoutParams(-1, -2));
-            c.addView(chipTime[i], new LinearLayout.LayoutParams(-1, -2));
-            chip.addView(c, new FrameLayout.LayoutParams(-1, -2, Gravity.CENTER));
-            chips[i] = chip;
-            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, -2, 1f);
-            lp.leftMargin = dp(8);
-            prayerRow.addView(chip, lp);
-        }
-
-        prayerSource = text(11, 150, false);
-        prayerSource.setPadding(0, dp(8), 0, 0);
-        oneLine(prayerSource);
-        prayerSource.setEllipsize(TextUtils.TruncateAt.END);
-        body.addView(prayerSource);
-
-        prayerHint = text(15, 220, false);
-        prayerHint.setGravity(Gravity.CENTER);
-        prayerHint.setText("Prayer times: set your location from your phone\n(gtv menu → p)  or  ./gtv.sh prayer \"Your City\"");
-        prayerHint.setLineSpacing(dp(4), 1f);
-        card.addView(prayerHint, new FrameLayout.LayoutParams(-1, -1, Gravity.CENTER));
-        prayerBody = body;
-        return card;
-    }
 
     /** Clean layout: a narrow glass card with the six times as rows and the next prayer below. */
     private GlassFrame buildPrayerCardCompact() {
@@ -729,7 +566,7 @@ public class HomeActivity extends Activity {
         }
 
         for (int i = 0; i < 6; i++) {
-            chipName[i].setText(clean ? names[i] : names[i].toUpperCase(Locale.getDefault()));
+            chipName[i].setText(names[i]);
             chipTime[i].setText(fmtShort(today.minutes[i]));
             chips[i].setHighlighted(i == (current >= 0 ? current : next));
         }
@@ -747,15 +584,11 @@ public class HomeActivity extends Activity {
             nextIn.setText((today.malay ? "dalam " : "in ") + (left >= 60 ? left / 60 + (today.malay ? "j " : "h ") : "") + left % 60 + "m");
         }
         String place = prayer.placeLabel();
-        if (clean) {
-            prayerSource.setText((today.malay ? "Waktu Solat" : "Prayer times") + (place.isEmpty() ? "" : "  ·  " + place));
-            if (current < 0) {
-                int target = next >= 0 ? today.minutes[next] : (tomorrow != null ? tomorrow.minutes[0] : -1);
-                nextLabel.setText((today.malay ? "Seterusnya: " : "Next: ") + (next >= 0 ? names[next] : names[0]));
-                nextTime.setText(target >= 0 ? fmtShort(target) : "--");
-            }
-        } else {
-            prayerSource.setText((place.isEmpty() ? "" : place + "  ·  ") + today.source);
+        prayerSource.setText((today.malay ? "Waktu Solat" : "Prayer times") + (place.isEmpty() ? "" : "  ·  " + place));
+        if (current < 0) {
+            int target = next >= 0 ? today.minutes[next] : (tomorrow != null ? tomorrow.minutes[0] : -1);
+            nextLabel.setText((today.malay ? "Seterusnya: " : "Next: ") + (next >= 0 ? names[next] : names[0]));
+            nextTime.setText(target >= 0 ? fmtShort(target) : "--");
         }
     }
 
@@ -1062,8 +895,8 @@ public class HomeActivity extends Activity {
         switch (e.getKeyCode()) {
             case KeyEvent.KEYCODE_DPAD_LEFT: target = pos - 1; break;
             case KeyEvent.KEYCODE_DPAD_RIGHT: target = pos + 1; break;
-            case KeyEvent.KEYCODE_DPAD_UP: target = pos - columns; break;
-            case KeyEvent.KEYCODE_DPAD_DOWN: target = pos + columns; break;
+            case KeyEvent.KEYCODE_DPAD_UP: target = pos - COLUMNS; break;
+            case KeyEvent.KEYCODE_DPAD_DOWN: target = pos + COLUMNS; break;
             case KeyEvent.KEYCODE_DPAD_CENTER:
             case KeyEvent.KEYCODE_ENTER:
             case KeyEvent.KEYCODE_BACK:
@@ -1237,8 +1070,8 @@ public class HomeActivity extends Activity {
         final GradientDrawable dot = new GradientDrawable();
 
         Tile() {
-            super(HomeActivity.this, clean ? 12 : 16, 1.1f);
-            final float r = dp(clean ? 8 : 11);
+            super(HomeActivity.this, 12, 1.1f);
+            final float r = dp(8);
             banner.setScaleType(ImageView.ScaleType.CENTER_CROP);
             banner.setOutlineProvider(new ViewOutlineProvider() {
                 @Override public void getOutline(View v, Outline o) {
@@ -1247,7 +1080,7 @@ public class HomeActivity extends Activity {
             });
             banner.setClipToOutline(true);
             FrameLayout.LayoutParams blp = new FrameLayout.LayoutParams(-1, -1);
-            int inset = dp(clean ? 3 : 5);
+            int inset = dp(3);
             blp.setMargins(inset, inset, inset, inset);
             addView(banner, blp);
 
@@ -1256,14 +1089,14 @@ public class HomeActivity extends Activity {
             iconFrame.addView(icon, new FrameLayout.LayoutParams(-1, -1));
             initial.setGravity(Gravity.CENTER);
             iconFrame.addView(initial, new FrameLayout.LayoutParams(-1, -1));
-            int iconSize = clean ? dp(28) : dp(44);
+            int iconSize = dp(28);
             iconBox.addView(iconFrame, new LinearLayout.LayoutParams(iconSize, iconSize));
             label.setGravity(Gravity.CENTER);
             oneLine(label);
             label.setEllipsize(TextUtils.TruncateAt.END);
-            if (clean) label.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11);
-            label.setPadding(dp(6), dp(clean ? 4 : 8), dp(6), 0);
-            if (clean) initial.setTextSize(TypedValue.COMPLEX_UNIT_SP, 15);
+            label.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11);
+            label.setPadding(dp(6), dp(4), dp(6), 0);
+            initial.setTextSize(TypedValue.COMPLEX_UNIT_SP, 15);
             iconBox.addView(label, new LinearLayout.LayoutParams(-1, -2));
             addView(iconBox, new FrameLayout.LayoutParams(-1, -1));
 
@@ -1271,15 +1104,15 @@ public class HomeActivity extends Activity {
 
             // Small glass "Get" pill for apps that aren't installed.
             badge.setText("Get");
-            badge.setPadding(dp(clean ? 6 : 9), dp(clean ? 1 : 3), dp(clean ? 6 : 9), dp(clean ? 1 : 3));
-            if (clean) badge.setTextSize(TypedValue.COMPLEX_UNIT_SP, 9);
+            badge.setPadding(dp(6), dp(1), dp(6), dp(1));
+            badge.setTextSize(TypedValue.COMPLEX_UNIT_SP, 9);
             GradientDrawable pillBg = new GradientDrawable();
             pillBg.setCornerRadius(dp(10));
             pillBg.setColor(0x55FFFFFF);
             pillBg.setStroke(Math.max(1, dp(1)), 0x99FFFFFF);
             badge.setBackground(pillBg);
             FrameLayout.LayoutParams bl = new FrameLayout.LayoutParams(-2, -2, Gravity.TOP | Gravity.END);
-            bl.setMargins(0, dp(clean ? 4 : 9), dp(clean ? 4 : 9), 0);
+            bl.setMargins(0, dp(4), dp(4), 0);
             addView(badge, bl);
         }
 

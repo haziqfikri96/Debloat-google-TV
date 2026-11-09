@@ -165,7 +165,7 @@ You can also pass a list file directly: `./gtv.sh debloat my-list.txt`.
 
 Most of the lag on Google TV comes from the stock home screen. It is full of ads, autoplaying trailers and heavy recommendation rows. This repo includes **[Glass Launcher](glass-launcher/)**, a tiny home screen with a frosted-glass design that is built to stay smooth on cheap TV hardware.
 
-![Glass Launcher](docs/glass-aurora.jpg)
+![Glass Launcher](docs/glass-clean.jpg)
 
 ```bash
 ./gtv.sh glass                    # install it and make it the home screen
