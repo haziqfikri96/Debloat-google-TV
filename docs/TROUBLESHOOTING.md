@@ -118,6 +118,9 @@ You used the `aggressive` level. Run `gtv google-home`; it restores Google Assis
 ### An app I removed came back after a reboot or update
 Run `gtv recheck`. It removes them again. (On Xiaomi TVs see [the Xiaomi note](../README.md#xiaomi-tvs-netflix--prime-video-come-back-after-a-reboot).)
 
+### My wallpaper photo is gone after turning the TV on
+Right after a restart the TV's storage can take a minute to become readable, and older versions gave up on the photo and saved the default look. Quick fix: open any app and press Back or HOME to return to Glass, and the photo comes back. The newest version keeps your choice and brings the photo back by itself within a minute or two (update with `git pull`, then `gtv glass`). If it never comes back, send the photo again: `gtv wallpaper <file>`.
+
 ### The prayer times look wrong
 Almost always the **TV's clock or time zone** is wrong. On the TV: Settings → System → Date & time → turn on automatic date and time, and set the right time zone. Then run `gtv prayer "Your Town"` again. In Malaysia the launcher shows JAKIM's official times for your zone.
 
