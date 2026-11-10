@@ -26,6 +26,7 @@ import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
+import android.os.SystemClock;
 import android.provider.Settings;
 import android.text.TextUtils;
 import android.text.format.DateFormat;
@@ -134,6 +135,7 @@ public class HomeActivity extends Activity {
         handleConfig(getIntent());
         buildUi();
         loadTheme(pickTheme());
+        watchWallpaper();
         loadApps();
         // Listen for app installs/removals for the whole lifetime, not just while visible:
         // apps removed over adb or from Settings must disappear from Home.
@@ -159,6 +161,7 @@ public class HomeActivity extends Activity {
         // A new wallpaper may have been pushed while we were in the background.
         int t = pickTheme();
         if (t != Glass.theme) loadTheme(t);
+        watchWallpaper();
         refreshPrayer();
         nowPlaying.start();
     }
@@ -735,10 +738,40 @@ public class HomeActivity extends Activity {
 
     // --------------------------------------------------------------- themes --
 
+    /**
+     * Right after the TV starts, its storage may not be readable for a minute or two. If a
+     * photo was set but can't be read yet, keep checking so it appears by itself.
+     */
+    private int wallpaperTries;
+    private final Runnable wallpaperRetry = new Runnable() {
+        @Override public void run() {
+            if (isDestroyed()) return;
+            if (Glass.findWallpaper(HomeActivity.this) != null) {
+                int t = pickTheme();
+                if (t != Glass.theme) loadTheme(t);
+            } else if (++wallpaperTries < 90) {
+                ui.postDelayed(this, 3000);
+            }
+        }
+    };
+
+    private void watchWallpaper() {
+        wallpaperTries = 0;
+        ui.removeCallbacks(wallpaperRetry);
+        if (prefs.getLong("wallpaperStamp", 0) != 0 && Glass.findWallpaper(this) == null) {
+            ui.postDelayed(wallpaperRetry, 3000);
+        }
+    }
+
     /** Saved theme, but switch to "Photo" when a new wallpaper has been pushed. */
     private int pickTheme() {
         int t = prefs.getInt("theme", 0);
         File wp = Glass.findWallpaper(this);
+        if (wp == null && prefs.getLong("wallpaperStamp", 0) != 0
+                && HomeKeeperService.justBooted(SystemClock.elapsedRealtime())) {
+            // Storage not ready yet after a restart: don't forget the photo, check again soon.
+            return Math.max(0, Math.min(t, Glass.THEMES.length - 1));
+        }
         long stamp = wp == null ? 0 : wp.lastModified();
         if (stamp != prefs.getLong("wallpaperStamp", 0)) {
             prefs.edit().putLong("wallpaperStamp", stamp).putInt("theme", wp != null ? 4 : 0).apply();
