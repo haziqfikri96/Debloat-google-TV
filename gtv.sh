@@ -86,11 +86,26 @@ connect_tv() {
   info "Connecting to $addr — accept the 'Allow debugging?' prompt on the TV if it appears"
   local out; out="$(adb connect "$addr" 2>&1 || true)"
   if [[ "$out" != *"connected to"* ]]; then
+    local why
+    case "$out" in
+      *[Rr]efused*)
+        why="The TV answered, but nothing is listening on port ${addr##*:}.
+       - Google TV and Android 11+ TVs: use option 2 (Pair TV) with Developer options > Wireless debugging,
+         then connect to the IP:PORT shown on that screen. Port 5555 is closed on them.
+       - Older TVs: turn on Developer options > USB debugging (and Network debugging if you see it)." ;;
+      *[Tt]imed*|*[Uu]nreachable*|*"No route"*|*[Ff]ailed*|*[Cc]annot*|*"unable to"*)
+        why="Nothing answered at $addr, so the TV was never asked to show the 'Allow debugging?' box.
+       - Is the IP still right? Check TV Settings > Network (it can change).
+       - Hotel, office and guest Wi-Fi usually BLOCK devices from talking to each other ('client isolation'),
+         even on the same Wi-Fi name. Use your own network instead: home Wi-Fi, a travel router, or another
+         phone's hotspot (connect BOTH the TV and this device to it).
+       - Wireless debugging TVs also need pairing first (option 2)." ;;
+      *) why="Unexpected answer from adb." ;;
+    esac
     die "Could not connect: $out
+       $why
        - Phone and TV must be on the same Wi-Fi.$( (( IS_ISH )) && printf '\n       - iPhone/iPad: allow iSH under Settings > Privacy & Security > Local Network.')
-       - Older TVs: Developer options > Network debugging (port 5555).
-       - Google TV 12+: Developer options > Wireless debugging. Pair first
-         (./gtv.sh pair <IP:PAIR-PORT> <CODE>), then connect to the IP:PORT shown there."
+       More help: docs/TROUBLESHOOTING.md (run: gtv doctor)"
   fi
   SERIAL="$addr"
   echo "$addr" > "$DEVICE_FILE"
@@ -1360,6 +1375,7 @@ doctor() {
       *)
         echo "$no_ Cannot reach the TV at $SERIAL."
         echo "      - TV on and awake? Same Wi-Fi as this device? The TV's IP can change: check Settings > Network."
+        echo "      - Hotel, office or guest Wi-Fi often blocks devices from reaching each other. Use home Wi-Fi, a travel router or a phone hotspot."
         echo "      - Google TV 12+: Developer options > Wireless debugging must be ON; pair again (menu 2) if it was off."
         (( IS_ISH )) && echo "      - iPhone/iPad: Settings > Privacy & Security > Local Network > turn iSH on."
         bad=$((bad + 1)) ;;
