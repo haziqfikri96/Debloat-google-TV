@@ -336,6 +336,22 @@ tweaks() {
   info "Done. Reboot to apply everything: ./gtv.sh reboot"
 }
 
+# download URL FILE: quiet download with a short progress line every few seconds.
+# (curl's own progress table prints hundreds of lines in iSH and Termux.)
+download() {
+  command -v curl >/dev/null || die "curl not found"
+  local url="$1" out="$2" pid mb last=-1 rc=0
+  curl -fL --retry 3 -sS -o "$out" "$url" &
+  pid=$!
+  while kill -0 "$pid" 2>/dev/null; do
+    sleep "${GTV_DL_TICK:-3}"
+    mb=0; [[ -f "$out" ]] && mb=$(( $(wc -c < "$out") / 1048576 ))
+    if (( mb != last )); then printf '    %d MB downloaded...\n' "$mb"; last=$mb; fi
+  done
+  wait "$pid" || rc=$?
+  return "$rc"
+}
+
 # The APK in the latest stable GitHub release of OWNER/REPO that fits this TV's processor.
 github_apk_url() {
   local repo="$1" json tag abis abi u
@@ -377,11 +393,11 @@ install_app() {
     apk="$ROOT/.cache/$(basename "${url%%\?*}")"
     [[ "$apk" == *.apk ]] || apk="$apk.apk"
     info "Downloading $(basename "$apk") from $(sed 's#^https://##; s#/.*##' <<<"$url")"
-    curl -fL --retry 3 -o "$apk.part" "$url" || die "Download failed: $url"
+    download "$url" "$apk.part" || die "Download failed: $url"
     mv "$apk.part" "$apk"
   fi
   size="$(du -h "$apk" | cut -f1)"
-  info "Installing $(basename "$apk") ($size) on the TV"
+  info "Installing $(basename "$apk") ($size) on the TV (large apps take a minute or two; the screen stays quiet)"
   if (( DRY_RUN )); then printf '    [dry-run] adb install -r %s\n' "$apk"; return 0; fi
   install_apk "$apk" safe
   ok "Installed. Find it in the app list on the TV (Glass shows it in the dock)."
@@ -519,7 +535,7 @@ glass_apk() {
   mkdir -p "$ROOT/.cache"
   f="$ROOT/.cache/glass-launcher.apk"
   info "Downloading Glass Launcher" >&2
-  curl -fL --retry 3 -o "$f.part" "$GLASS_URL" >&2 \
+  download "$GLASS_URL" "$f.part" >&2 \
     || die "Download failed. Build it yourself (see glass-launcher/README.md) or
        download glass-launcher.apk from the repo's Releases page into Downloads."
   mv "$f.part" "$f"
