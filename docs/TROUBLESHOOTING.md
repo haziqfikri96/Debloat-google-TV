@@ -54,6 +54,17 @@ Check these in order:
 5. **iPhone/iPad:** Settings → Privacy & Security → **Local Network** → turn **iSH** on.
 6. **Mac:** System Settings → Privacy & Security → **Local Network** → turn **Terminal** on.
 
+### Hotel, office or guest Wi-Fi: "Connection timed out" and no *Allow debugging?* box
+If the message says **timed out** or **no route**, your phone never reached the TV, so the TV never had a chance to show the box. Hotel, office, café and guest networks usually block devices from talking to each other, even when both show the same Wi-Fi name ("client isolation"). Nothing in `gtv` or on the TV can change that. Use a network you control:
+- **Home Wi-Fi** (easiest), or
+- a small **travel router** plugged into the hotel's cable or joined to its Wi-Fi: connect both the TV and your phone to the travel router, or
+- another phone's **hotspot**: connect both the TV and the device running `gtv` to it. (An iPhone hotspot also works for the TV and the same iPhone in iSH on many setups, but it's less reliable.)
+
+The word to look for is **timed out / no route** (blocked network) against **refused** (the TV answered but debugging isn't set up: see the next entries).
+
+### "Connection refused" on port 5555
+The TV answered, but nothing is listening on 5555. Google TV and any Android 11+ TV keep that port closed. Use **Wireless debugging** with menu **2** (Pair TV) as in [TV setup](TV-SETUP.md#how-pairing-works-option-2). On older TVs, make sure **USB debugging** is on in Developer options (not only Developer mode).
+
 ### *"Pairing failed"*
 - The 6-digit code **expires** when the box closes on the TV. Click **Pair device with pairing code** again for a new code and a new port.
 - Use the **pairing** address (from the pairing box) for pairing, and the **other** address (main Wireless debugging screen) for connecting. They have different ports.
